@@ -13,7 +13,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createServer, get as httpGet, type Server } from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
@@ -152,6 +152,7 @@ export class CamoufoxDisplay {
 
     this.run('Xvfb', [display, '-screen', '0', `${adjWidth}x${height}x24`, '-nolisten', 'tcp'])
     if (!(await this.waitDisplay(display))) throw new Error('Xvfb failed to start for the embedded browser.')
+    this.startWindowManager(assets, display)
 
     this.run(x11vncBin, ['-display', display, '-rfbport', String(vncPort), '-nopw', '-forever', '-shared', '-listen', '127.0.0.1', '-noxdamage', '-xrandr', '-quiet'], { LD_LIBRARY_PATH: x11vncLibs })
     await sleep(700)
@@ -222,6 +223,7 @@ export class CamoufoxDisplay {
     const adjWidth = Math.floor(width / 4) * 4
     this.run(bin, [display, '-geometry', `${adjWidth}x${height}`, '-rfbport', String(await freePort()), '-SecurityTypes', 'None', '-DisableBasicAuth', '1', '-interface', '127.0.0.1', '-websocketPort', String(wsPort), '-httpd', www, '-sslOnly', '0', '-nolisten', 'tcp'])
     if (!(await this.waitDisplay(display))) return null
+    this.startWindowManager(assets, display)
     // Wait for the KasmVNC web UI to answer. Use node:http with agent:false so no
     // keep-alive socket lingers (a lingering undici socket would assert when the
     // server is later killed during stop()).
@@ -242,6 +244,40 @@ export class CamoufoxDisplay {
     this.startWindowFill(assets, display)
     this.info = { running: true, display, httpPort: wsPort, wsPort, viewerUrl: base + 'vnc.html?autoconnect=true&resize=remote' }
     return this.getInfo()
+  }
+
+  // A lightweight window manager gives proper focus handling so browser popups /
+  // menus stay open when the pointer moves (raw X11 with PointerRoot focus closes
+  // them). Decorations are disabled for the browser to keep it full-bleed.
+  private startWindowManager(assets: string, display: string): void {
+    const bin = path.join(assets, 'wm', 'usr', 'bin', 'openbox')
+    const libs = path.join(assets, 'wm', 'usr', 'lib', 'x86_64-linux-gnu')
+    if (!existsSync(bin)) return
+    const rc = path.join(os.tmpdir(), `ego-camoufox-openbox-${display.replace(':', '')}.xml`)
+    const xml = `<?xml version="1.0"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus><focusNew>yes</focusNew><followMouse>no</followMouse><focusLast>yes</focusLast><underMouse>no</underMouse></focus>
+  <applications>
+    <application class="Navigator"><decor>no</decor></application>
+    <application class="camoufox"><decor>no</decor></application>
+  </applications>
+</openbox_config>`
+    try { writeFileSync(rc, xml) } catch { return }
+    this.run(bin, ['--config-file', rc], { DISPLAY: display, LD_LIBRARY_PATH: libs, XDG_DATA_DIRS: path.join(assets, 'wm', 'usr', 'share') })
+  }
+
+  getClipboard(): Promise<string> {
+    const assets = this.opts.assetsDir ?? defaultAssetsDir()
+    const bin = path.join(assets, 'wm', 'usr', 'bin', 'xclip')
+    const libs = path.join(assets, 'wm', 'usr', 'lib', 'x86_64-linux-gnu')
+    if (!existsSync(bin) || !this.info.display) return Promise.resolve('')
+    return new Promise(resolve => {
+      const p = spawn(bin, ['-o', '-selection', 'clipboard'], { env: { ...process.env, DISPLAY: this.info.display, LD_LIBRARY_PATH: libs }, stdio: ['ignore', 'pipe', 'pipe'] })
+      let out = ''
+      p.stdout.on('data', d => { out += d })
+      p.on('exit', () => resolve(out))
+      p.on('error', () => resolve(''))
+    })
   }
 
   private startWindowFill(assets: string, display: string): void {

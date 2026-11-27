@@ -3068,6 +3068,14 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 			var addr = addrState[0], setAddr = addrState[1]
 			var busyState = React.useState(false)
 			var busy = busyState[0], setBusy = busyState[1]
+			var keyState = React.useState(0)
+			var iframeKey = keyState[0], setIframeKey = keyState[1]
+			var didRemount = React.useRef(false)
+			function copyOut() {
+				fetchEgo('/api/ego/camoufox/clipboard-get').then(function (r) { return r.json() }).then(function (j) {
+					if (j && j.text && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(j.text).catch(function () {})
+				}).catch(function () {})
+			}
 			function post(path, body) {
 				setBusy(true)
 				return fetchEgo(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
@@ -3110,11 +3118,12 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 				h('div', { style: { display: 'flex', gap: 6, padding: '6px 10px', flexShrink: 0 } },
 					h('input', { style: { flex: 1, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--ego-border, rgba(0,0,0,.15))', fontSize: 12, background: 'var(--ego-surface, #fff)', color: 'inherit' }, placeholder: 'https://…', value: addr, onChange: function (e) { setAddr(e.target.value) }, onKeyDown: function (e) { if (e.key === 'Enter') post('/api/ego/camoufox/navigate', { url: addr }) } }),
 					h('button', { type: 'button', style: btn, disabled: busy, onClick: function () { post('/api/ego/camoufox/navigate', { url: addr }) } }, 'Go'),
-					h('button', { type: 'button', style: btn, title: 'Paste local clipboard into the page', onClick: doPaste }, 'Paste')
+					h('button', { type: 'button', style: btn, title: 'Paste local clipboard into the page', onClick: doPaste }, 'Paste'),
+					h('button', { type: 'button', style: btn, title: 'Copy the remote clipboard out to your local clipboard', onClick: copyOut }, 'Copy out')
 				),
 				info.running && info.viewerUrl
 					? h('div', { ref: wrapRef, style: { flex: 1, minHeight: 0, position: 'relative', background: '#101418' } },
-						h('iframe', { src: info.viewerUrl, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }, allow: 'clipboard-read; clipboard-write' }))
+						h('iframe', { key: iframeKey, src: info.viewerUrl, onLoad: function () { if (!didRemount.current) { didRemount.current = true; setTimeout(function () { setIframeKey(function (k) { return k + 1 }) }, 700) } }, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }, allow: 'clipboard-read; clipboard-write' }))
 					: h('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 } },
 						h('div', { style: { fontSize: 13, opacity: .7 } }, 'Camoufox is not running.'),
 						h('button', { type: 'button', style: btn, disabled: busy, onClick: function () { post('/api/ego/camoufox/start', {}) } }, busy ? 'Starting…' : 'Start browser')

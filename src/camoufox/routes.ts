@@ -59,6 +59,9 @@ export function registerCamoufoxRoutes(ctx: CtxLike, embedded: EmbeddedCamoufox)
     const r = await embedded.paste(String(body.text ?? ''))
     sendJson(res, 200, r)
   })
+  reg('/api/ego/camoufox/clipboard-get', async (_req, res) => {
+    sendJson(res, 200, await embedded.getClipboard())
+  })
 
   ctx.effect?.(() => () => { for (const d of disposers) { try { d() } catch {} } }, 'ego-browser: camoufox routes')
 }

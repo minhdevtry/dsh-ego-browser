@@ -101,6 +101,11 @@ export class EmbeddedCamoufox {
     catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) } }
   }
 
+  // Read the remote X clipboard so the panel can copy it out to the local clipboard.
+  async getClipboard(): Promise<{ ok: boolean; text: string }> {
+    return { ok: true, text: await this.display.getClipboard() }
+  }
+
   private requirePage(): Page | null { return this.display.getPage() }
 
   private gate(): { ok: false; code: string; error: string } | null {
