@@ -1,8 +1,9 @@
 // Embedded Camoufox runtime: one real browser shown directly in the DSH panel
-// via noVNC, with a manual/agent control gate. The agent may only act after the
-// user grants control; the user can always interact with the panel directly.
+// via Juggler screencast (no X11/VNC), with a manual/agent control gate. The agent
+// may only act after the user grants control; the user can always interact with
+// the panel directly, and any human input takes control back from the agent.
 
-import { CamoufoxDisplay, type DisplayInfo } from './display.ts'
+import { CamoufoxScreencast, type DisplayInfo } from './screencast.ts'
 import { collectFingerprintExpression, auditFingerprint } from '../stealth/fingerprint-audit.ts'
 import type { Page } from 'playwright-core'
 
@@ -30,14 +31,22 @@ export interface EmbeddedConfig {
 }
 
 export class EmbeddedCamoufox {
-  private display: CamoufoxDisplay
+  private display: CamoufoxScreencast
   private getCfg: () => EmbeddedConfig
   controlMode: ControlMode = 'manual'
   private lastUrl = 'about:blank'
 
   constructor(getCfg: () => EmbeddedConfig) {
     this.getCfg = getCfg
-    this.display = new CamoufoxDisplay({})
+    this.display = this.makeDisplay()
+  }
+
+  private makeDisplay(): CamoufoxScreencast {
+    const cfg = this.getCfg()
+    return new CamoufoxScreencast({
+      humanize: cfg.humanize, geoip: cfg.geoip, proxy: cfg.proxy, width: cfg.width, height: cfg.height,
+      onHumanInput: () => { this.controlMode = 'manual' },
+    })
   }
 
   isEnabled(): boolean { return this.getCfg().enabled }
@@ -48,11 +57,8 @@ export class EmbeddedCamoufox {
   }
 
   async ensureStarted(): Promise<DisplayInfo> {
-    const cfg = this.getCfg()
-    // Re-create display with current options if not running.
-    if (!this.display.getInfo().running) {
-      this.display = new CamoufoxDisplay({ humanize: cfg.humanize, geoip: cfg.geoip, proxy: cfg.proxy, width: cfg.width, height: cfg.height })
-    }
+    // Re-create the screencast runtime with current options if not running.
+    if (!this.display.getInfo().running) this.display = this.makeDisplay()
     const info = await this.display.start()
     const page = this.display.getPage()
     if (page) {
