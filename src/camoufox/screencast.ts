@@ -53,7 +53,7 @@ ws.onopen=()=>{cv.focus();sendResize()};
 ws.onmessage=async ev=>{if(typeof ev.data==='string')return;const b=await createImageBitmap(new Blob([ev.data],{type:'image/jpeg'}));if(cv.width!==b.width||cv.height!==b.height){cv.width=b.width;cv.height=b.height;vw=b.width;vh=b.height}ctx.drawImage(b,0,0);b.close()};
 function send(o){window.__sent=(window.__sent||0)+1;if(ws.readyState===1)ws.send(JSON.stringify(o))}
 function co(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*(vw/r.width),y:(e.clientY-r.top)*(vh/r.height)}}
-cv.addEventListener('pointermove',e=>send({type:'mouse',action:'move',...co(e)}));
+let lastMove=0;cv.addEventListener('pointermove',e=>{const now=Date.now();if(now-lastMove<30)return;lastMove=now;send({type:'mouse',action:'move',...co(e)})});
 cv.addEventListener('pointerdown',e=>{cv.focus();const c=co(e);send({type:'mouse',action:'move',...c});send({type:'mouse',action:'down'})});
 cv.addEventListener('pointerup',()=>send({type:'mouse',action:'up'}));
 cv.addEventListener('wheel',e=>{e.preventDefault();send({type:'mouse',action:'wheel',dx:e.deltaX,dy:e.deltaY})},{passive:false});
@@ -150,6 +150,23 @@ export class CamoufoxScreencast {
     })()
   }
 
+  // Coalesce pointer moves: keep only the latest position and apply at ~40Hz.
+  // A raw move-per-event stream would queue hundreds of protocol round-trips
+  // and produce tens of seconds of mouse lag.
+  private pendingMove: { x: number; y: number } | null = null
+  private moveTimer: ReturnType<typeof setTimeout> | null = null
+  private queueMove(x: number, y: number): void {
+    this.pendingMove = { x, y }
+    if (this.moveTimer) return
+    this.moveTimer = setTimeout(() => { this.moveTimer = null; void this.flushMove() }, 25)
+    this.moveTimer.unref?.()
+  }
+  private async flushMove(): Promise<void> {
+    const m = this.pendingMove
+    this.pendingMove = null
+    if (m) { try { await this.page?.mouse.move(m.x, m.y) } catch {} }
+  }
+
   private async handleInput(ws: any, raw: Buffer): Promise<void> {
     let m: any
     try { m = JSON.parse(raw.toString()) } catch { return }
@@ -159,8 +176,8 @@ export class CamoufoxScreencast {
     if (m.type === 'mouse' || m.type === 'key') this.opts.onHumanInput?.()
     try {
       if (m.type === 'mouse') {
-        if (m.action === 'move') await page.mouse.move(m.x, m.y)
-        else if (m.action === 'down') await page.mouse.down()
+        if (m.action === 'move') { this.queueMove(m.x, m.y); return }
+        if (m.action === 'down') { await this.flushMove(); await page.mouse.down() }
         else if (m.action === 'up') await page.mouse.up()
         else if (m.action === 'click') await page.mouse.click(m.x, m.y)
         else if (m.action === 'wheel') await page.mouse.wheel(m.dx || 0, m.dy || 0)
@@ -183,6 +200,8 @@ export class CamoufoxScreencast {
 
   async stop(): Promise<void> {
     this.info.running = false
+    if (this.moveTimer) { clearTimeout(this.moveTimer); this.moveTimer = null }
+    this.pendingMove = null
     try { if (this.cast) await this.cast.dispose() } catch {}
     this.cast = null
     try { if (this.wss) this.wss.close() } catch {}

@@ -44,7 +44,11 @@ export class EmbeddedCamoufox {
   private makeDisplay(): CamoufoxScreencast {
     const cfg = this.getCfg()
     return new CamoufoxScreencast({
-      humanize: cfg.humanize, geoip: cfg.geoip, proxy: cfg.proxy, width: cfg.width, height: cfg.height,
+      // Human input drives this browser directly, so Camoufox mouse humanization
+      // must be OFF here: it delays every synthetic move and a stream of real
+      // pointer events queues up into tens of seconds of lag. Humanize stays
+      // available for the headless agent engine instead.
+      humanize: false, geoip: cfg.geoip, proxy: cfg.proxy, width: cfg.width, height: cfg.height,
       onHumanInput: () => { this.controlMode = 'manual' },
     })
   }
