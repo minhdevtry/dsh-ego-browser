@@ -75,7 +75,7 @@ function viewerHtml(wsPort: number): string {
 <script type="module">
 import RFB from '/novnc/core/rfb.js';
 const rfb = new RFB(document.getElementById('screen'), 'ws://' + location.hostname + ':${wsPort}', {});
-rfb.scaleViewport = true; rfb.resizeSession = false;
+rfb.scaleViewport = true; rfb.resizeSession = true;
 window.__rfb = rfb;
 </script></body></html>`
 }
@@ -89,6 +89,8 @@ export class CamoufoxDisplay {
   private page: Page | null = null
   private info: DisplayInfo = { running: false, display: '', httpPort: 0, wsPort: 0, viewerUrl: '' }
   private starting: Promise<DisplayInfo> | null = null
+  private fillTimer: ReturnType<typeof setInterval> | null = null
+  private lastFillSize = ''
 
   constructor(options: DisplayOptions = {}) {
     this.opts = { ...options, width: options.width ?? 1280, height: options.height ?? 900 }
@@ -124,7 +126,7 @@ export class CamoufoxDisplay {
     this.run('Xvfb', [display, '-screen', '0', `${adjWidth}x${height}x24`, '-nolisten', 'tcp'])
     if (!(await this.waitDisplay(display))) throw new Error('Xvfb failed to start for the embedded browser.')
 
-    this.run(x11vncBin, ['-display', display, '-rfbport', String(vncPort), '-nopw', '-forever', '-shared', '-listen', '127.0.0.1', '-noxdamage', '-quiet'], { LD_LIBRARY_PATH: x11vncLibs })
+    this.run(x11vncBin, ['-display', display, '-rfbport', String(vncPort), '-nopw', '-forever', '-shared', '-listen', '127.0.0.1', '-noxdamage', '-xrandr', '-quiet'], { LD_LIBRARY_PATH: x11vncLibs })
     await sleep(700)
 
     // WebSocket <-> TCP proxy (noVNC speaks binary RFB over WebSocket).
@@ -166,7 +168,7 @@ export class CamoufoxDisplay {
       headless: false,
       humanize: this.opts.humanize ?? false,
       enable_cache: false,
-      window: [adjWidth - 20, height - 40],
+      window: [adjWidth, height],
       env: { ...process.env, DISPLAY: display },
     }
     if (this.opts.proxy) launchOpts.proxy = { server: this.opts.proxy }
@@ -175,8 +177,52 @@ export class CamoufoxDisplay {
     this.page = await this.browser.newPage()
     await this.page.goto('about:blank').catch(() => {})
 
+    // Keep the browser window filling the (resizable) X display so the panel
+    // shows a full-bleed browser instead of letterboxed black bars.
+    this.startWindowFill(assets, display)
+
     this.info = { running: true, display, httpPort, wsPort, viewerUrl: `http://127.0.0.1:${httpPort}/` }
     return this.getInfo()
+  }
+
+  private startWindowFill(assets: string, display: string): void {
+    const xdotool = path.join(assets, 'xdotool', 'usr', 'bin', 'xdotool')
+    const libs = path.join(assets, 'xdotool', 'usr', 'lib', 'x86_64-linux-gnu')
+    if (!existsSync(xdotool)) return
+    const env = { ...process.env, DISPLAY: display, LD_LIBRARY_PATH: libs }
+    const exec = (args: string[]): Promise<string> => new Promise(resolve => {
+      const p = spawn(xdotool, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
+      let out = ''
+      p.stdout.on('data', d => { out += d })
+      p.on('exit', () => resolve(out.trim()))
+      p.on('error', () => resolve(''))
+    })
+    const dims = (): Promise<string> => new Promise(resolve => {
+      const p = spawn('xdpyinfo', ['-display', display], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+      let out = ''
+      p.stdout.on('data', d => { out += d })
+      p.on('exit', () => {
+        const m = out.match(/dimensions:\s+(\d+)x(\d+)/)
+        resolve(m ? `${m[1]}x${m[2]}` : '')
+      })
+      p.on('error', () => resolve(''))
+    })
+    const tick = async () => {
+      if (!this.info.running) return
+      const size = await dims()
+      if (!size || size === this.lastFillSize) return
+      this.lastFillSize = size
+      const [w, h] = size.split('x')
+      let ids = (await exec(['search', '--classname', 'Navigator'])).split('\n').filter(Boolean)
+      if (ids.length === 0) ids = (await exec(['search', '--class', 'camoufox'])).split('\n').filter(Boolean)
+      for (const id of ids) {
+        await exec(['windowsize', id, w, h])
+        await exec(['windowmove', id, '0', '0'])
+      }
+    }
+    void tick()
+    this.fillTimer = setInterval(() => { void tick() }, 800)
+    this.fillTimer.unref?.()
   }
 
   private run(cmd: string, args: string[], env: Record<string, string> = {}): ChildProcess {
@@ -203,6 +249,8 @@ export class CamoufoxDisplay {
 
   async stop(): Promise<void> {
     this.info.running = false
+    if (this.fillTimer) { clearInterval(this.fillTimer); this.fillTimer = null }
+    this.lastFillSize = ''
     try { if (this.browser) await this.browser.close() } catch {}
     this.browser = null; this.page = null
     try { if (this.wss) this.wss.close() } catch {}
