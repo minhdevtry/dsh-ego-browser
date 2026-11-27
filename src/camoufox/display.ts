@@ -11,7 +11,7 @@
 // Original adapter; no Camoufox/x11vnc/noVNC code is copied into this file.
 
 import { spawn, type ChildProcess } from 'node:child_process'
-import { createServer, type Server } from 'node:http'
+import { createServer, get as httpGet, type Server } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import net from 'node:net'
@@ -51,6 +51,17 @@ async function freePort(): Promise<number> {
       srv.close(() => resolve(port))
     })
     srv.on('error', reject)
+  })
+}
+
+function httpOk(url: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const req = httpGet(url, { agent: false, timeout: 1500 }, res => {
+      res.resume()
+      resolve(res.statusCode === 200)
+    })
+    req.on('error', () => resolve(false))
+    req.on('timeout', () => { req.destroy(); resolve(false) })
   })
 }
 
@@ -109,6 +120,10 @@ export class CamoufoxDisplay {
 
   private async doStart(): Promise<DisplayInfo> {
     const assets = this.opts.assetsDir ?? defaultAssetsDir()
+    // Prefer KasmVNC (WebP/video/WebRTC, dynamic resize, clipboard) when present;
+    // it is a single X-server+VNC+web-UI component. Fall back to Xvfb+x11vnc+noVNC.
+    const kasm = await this.tryStartKasm(assets)
+    if (kasm) return kasm
     const x11vncBin = path.join(assets, 'x11vnc', 'usr', 'bin', 'x11vnc')
     const x11vncLibs = path.join(assets, 'x11vnc', 'usr', 'lib', 'x86_64-linux-gnu')
     const novncDir = path.join(assets, 'novnc')
@@ -182,6 +197,38 @@ export class CamoufoxDisplay {
     this.startWindowFill(assets, display)
 
     this.info = { running: true, display, httpPort, wsPort, viewerUrl: `http://127.0.0.1:${httpPort}/` }
+    return this.getInfo()
+  }
+
+  private async tryStartKasm(assets: string): Promise<DisplayInfo | null> {
+    const bin = path.join(assets, 'kasmvnc', 'usr', 'bin', 'Xkasmvnc')
+    const www = path.join(assets, 'kasmvnc', 'usr', 'share', 'kasmvnc', 'www')
+    if (!existsSync(bin) || !existsSync(path.join(www, 'vnc.html'))) return null
+    const display = await findFreeDisplay()
+    const wsPort = await freePort()
+    const width = this.opts.width ?? 1280, height = this.opts.height ?? 900
+    const adjWidth = Math.floor(width / 4) * 4
+    this.run(bin, [display, '-geometry', `${adjWidth}x${height}`, '-rfbport', String(await freePort()), '-SecurityTypes', 'None', '-DisableBasicAuth', '1', '-interface', '127.0.0.1', '-websocketPort', String(wsPort), '-httpd', www, '-sslOnly', '0', '-nolisten', 'tcp'])
+    if (!(await this.waitDisplay(display))) return null
+    // Wait for the KasmVNC web UI to answer. Use node:http with agent:false so no
+    // keep-alive socket lingers (a lingering undici socket would assert when the
+    // server is later killed during stop()).
+    const base = `http://127.0.0.1:${wsPort}/`
+    let up = false
+    for (let i = 0; i < 40 && !up; i++) {
+      up = await httpOk(base + 'vnc.html')
+      if (!up) await sleep(200)
+    }
+    if (!up) return null
+    const { Camoufox } = await import('camoufox')
+    const launchOpts: Record<string, unknown> = { headless: false, humanize: this.opts.humanize ?? false, enable_cache: false, window: [adjWidth, height], env: { ...process.env, DISPLAY: display } }
+    if (this.opts.proxy) launchOpts.proxy = { server: this.opts.proxy }
+    if (this.opts.geoip) launchOpts.geoip = true
+    this.browser = await Camoufox(launchOpts) as Browser
+    this.page = await this.browser.newPage()
+    await this.page.goto('about:blank').catch(() => {})
+    this.startWindowFill(assets, display)
+    this.info = { running: true, display, httpPort: wsPort, wsPort, viewerUrl: base + 'vnc.html?autoconnect=true&resize=remote' }
     return this.getInfo()
   }
 
