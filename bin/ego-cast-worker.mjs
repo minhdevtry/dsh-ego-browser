@@ -30,7 +30,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 	enumerable: true
 }) : target, mod));
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/constants.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/constants.js
 var require_constants = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const BINARY_TYPES = [
 		"nodebuffer",
@@ -52,8 +52,9 @@ var require_constants = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		NOOP: () => {}
 	};
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/buffer-util.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/buffer-util.js
 var require_buffer_util = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const { websocketMask, websocketUnmask } = __require("http");
 	const { EMPTY_BUFFER } = require_constants();
 	const FastBuffer = Buffer[Symbol.species];
 	/**
@@ -138,8 +139,16 @@ var require_buffer_util = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		toBuffer,
 		unmask: _unmask
 	};
-	/* istanbul ignore else  */
-	if (!process.env.WS_NO_BUFFER_UTIL) try {
+	if (websocketMask) {
+		module.exports.mask = function(source, mask, output, offset, length) {
+			if (length < 24) _mask(source, mask, output, offset, length);
+			else websocketMask(source, mask, output, offset, length);
+		};
+		module.exports.unmask = function(buffer, mask) {
+			if (buffer.length < 24) _unmask(buffer, mask);
+			else websocketUnmask(buffer, mask);
+		};
+	} else if (!process.env.WS_NO_BUFFER_UTIL) try {
 		const bufferUtil = __require("bufferutil");
 		module.exports.mask = function(source, mask, output, offset, length) {
 			if (length < 48) _mask(source, mask, output, offset, length);
@@ -151,7 +160,7 @@ var require_buffer_util = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		};
 	} catch (e) {}
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/limiter.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/limiter.js
 var require_limiter = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const kDone = Symbol("kDone");
 	const kRun = Symbol("kRun");
@@ -201,7 +210,7 @@ var require_limiter = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 	module.exports = Limiter;
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/permessage-deflate.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const zlib = __require("zlib");
 	const bufferUtil = require_buffer_util();
@@ -536,7 +545,7 @@ var require_permessage_deflate = /* @__PURE__ */ __commonJSMin(((exports, module
 		this[kCallback](err);
 	}
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/validation.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/validation.js
 var require_validation = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { isUtf8 } = __require("buffer");
 	const { hasBlob } = require_constants();
@@ -731,7 +740,7 @@ var require_validation = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		};
 	} catch (e) {}
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/receiver.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/receiver.js
 var require_receiver = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { Writable } = __require("stream");
 	const PerMessageDeflate = require_permessage_deflate();
@@ -1031,6 +1040,7 @@ var require_receiver = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				data = this.consume(this._payloadLength);
 				if (this._masked && (this._mask[0] | this._mask[1] | this._mask[2] | this._mask[3]) !== 0) unmask(data, this._mask);
 			}
+			this._mask = void 0;
 			if (this._opcode > 7) {
 				this.controlMessage(data, cb);
 				return;
@@ -1193,7 +1203,7 @@ var require_receiver = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 	module.exports = Receiver;
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/sender.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/sender.js
 var require_sender = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { Duplex } = __require("stream");
 	const { randomFillSync } = __require("crypto");
@@ -1306,12 +1316,13 @@ var require_sender = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				target[2] = target[3] = 0;
 				target.writeUIntBE(dataLength, 4, 6);
 			}
-			if (!options.mask) return [target, data];
+			if (!options.mask) return dataLength ? [target, data] : [target];
 			target[1] |= 128;
 			target[offset - 4] = mask[0];
 			target[offset - 3] = mask[1];
 			target[offset - 2] = mask[2];
 			target[offset - 1] = mask[3];
+			if (!dataLength) return [target];
 			if (skipMasking) return [target, data];
 			if (merge) {
 				applyMask(data, mask, target, offset, dataLength);
@@ -1690,7 +1701,7 @@ var require_sender = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		sender.onerror(err);
 	}
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/event-target.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/event-target.js
 var require_event_target = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { kForOnEventAttribute, kListener } = require_constants();
 	const kCode = Symbol("kCode");
@@ -1920,7 +1931,7 @@ var require_event_target = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		else listener.call(thisArg, event);
 	}
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/extension.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/extension.js
 var require_extension = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { tokenChars } = require_validation();
 	/**
@@ -2065,12 +2076,13 @@ var require_extension = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		parse
 	};
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/websocket.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/websocket.js
 var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const EventEmitter = __require("events");
 	const https = __require("https");
 	const http = __require("http");
 	const net = __require("net");
+	const querystring = __require("querystring");
 	const tls = __require("tls");
 	const { randomBytes, createHash } = __require("crypto");
 	const { Duplex, Readable } = __require("stream");
@@ -2125,19 +2137,27 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				this._bufferedAmount = 0;
 				this._isServer = false;
 				this._redirects = 0;
-				if (protocols === void 0) protocols = [];
-				else if (!Array.isArray(protocols)) {
+				if (protocols === void 0) {
+					if (!options || options.protocols === void 0) protocols = [];
+					else if (Array.isArray(options.protocols)) protocols = options.protocols;
+					else protocols = [options.protocols];
+				} else if (!Array.isArray(protocols)) {
 					if (typeof protocols === "object" && protocols !== null) {
 						options = protocols;
-						protocols = [];
+						if (options.protocols === void 0) protocols = [];
+						else if (Array.isArray(options.protocols)) protocols = options.protocols;
+						else protocols = [options.protocols];
 					} else protocols = [protocols];
 				}
-				initAsClient(this, address, protocols, options);
-			} else {
-				this._autoPong = options.autoPong;
-				this._closeTimeout = options.closeTimeout;
-				this._isServer = true;
+				options = initAsClient(this, address, protocols, options);
+			} else this._isServer = true;
+			if (options.autoPong) {
+				this._autoPong = true;
+				this._autoPongComplete = () => autoPongComplete(this);
+				this._pendingAutoPongs = 0;
+				this._maxPendingAutoPongs = options.maxPendingAutoPongs | 0;
 			}
+			this._closeTimeout = options.closeTimeout;
 		}
 		/**
 		* For historical reasons, the custom "nodebuffer" type is used by the default
@@ -2319,12 +2339,12 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				if (this._closeFrameSent && (this._closeFrameReceived || this._receiver._writableState.errorEmitted)) this._socket.end();
 				return;
 			}
-			this._readyState = WebSocket.CLOSING;
 			this._sender.close(code, data, !this._isServer, (err) => {
 				if (err) return;
 				this._closeFrameSent = true;
 				if (this._closeFrameReceived || this._receiver._writableState.errorEmitted) this._socket.end();
 			});
+			this._readyState = WebSocket.CLOSING;
 			setCloseTimer(this);
 		}
 		/**
@@ -2578,6 +2598,8 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	*     fragments
 	* @param {Number} [options.maxPayload=104857600] The maximum allowed message
 	*     size
+	* @param {Number} [options.maxPendingAutoPongs=60] The maximum number of
+	*     pending automatic pongs
 	* @param {Number} [options.maxRedirects=10] The maximum number of redirects
 	*     allowed
 	* @param {String} [options.origin] Value of the `Origin` or
@@ -2588,6 +2610,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	*     `Sec-WebSocket-Version` header
 	* @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
 	*     not to skip UTF-8 validation for text and close messages
+	* @return {Object} The resolved options object used for initialization
 	* @private
 	*/
 	function initAsClient(websocket, address, protocols, options) {
@@ -2598,7 +2621,8 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 			protocolVersion: protocolVersions[1],
 			maxBufferedChunks: 262144,
 			maxFragments: 16384,
-			maxPayload: 104857600,
+			maxPayload: 0x6400000,
+			maxPendingAutoPongs: 60,
 			skipUTF8Validation: false,
 			perMessageDeflate: true,
 			followRedirects: false,
@@ -2607,14 +2631,13 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 			socketPath: void 0,
 			hostname: void 0,
 			protocol: void 0,
+			protocols: void 0,
 			timeout: void 0,
 			method: "GET",
 			host: void 0,
 			path: void 0,
 			port: void 0
 		};
-		websocket._autoPong = opts.autoPong;
-		websocket._closeTimeout = opts.closeTimeout;
 		if (!protocolVersions.includes(opts.protocolVersion)) throw new RangeError(`Unsupported protocol version: ${opts.protocolVersion} (supported versions: ${protocolVersions.join(", ")})`);
 		let parsedUrl;
 		if (address instanceof URL) parsedUrl = address;
@@ -2623,8 +2646,10 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		} catch {
 			throw new SyntaxError(`Invalid URL: ${address}`);
 		}
-		if (parsedUrl.protocol === "http:") parsedUrl.protocol = "ws:";
-		else if (parsedUrl.protocol === "https:") parsedUrl.protocol = "wss:";
+		if (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:") {
+			parsedUrl = new URL(parsedUrl);
+			parsedUrl.protocol = parsedUrl.protocol === "http:" ? "ws:" : "wss:";
+		}
 		websocket._url = parsedUrl.href;
 		const isSecure = parsedUrl.protocol === "wss:";
 		const isIpcUrl = parsedUrl.protocol === "ws+unix:";
@@ -2677,11 +2702,16 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 			if (opts.protocolVersion < 13) opts.headers["Sec-WebSocket-Origin"] = opts.origin;
 			else opts.headers.Origin = opts.origin;
 		}
-		if (parsedUrl.username || parsedUrl.password) opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
+		if (parsedUrl.username || parsedUrl.password) opts.auth = `${querystring.unescape(parsedUrl.username)}:${querystring.unescape(parsedUrl.password)}`;
 		if (isIpcUrl) {
-			const parts = opts.path.split(":");
-			opts.socketPath = parts[0];
-			opts.path = parts[1];
+			const i = opts.path.indexOf(":");
+			if (i === -1) {
+				opts.socketPath = opts.path;
+				opts.path = "";
+			} else {
+				opts.socketPath = opts.path.slice(0, i);
+				opts.path = opts.path.slice(i + 1);
+			}
 		}
 		let req;
 		if (opts.followRedirects) {
@@ -2797,6 +2827,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		});
 		if (opts.finishRequest) opts.finishRequest(req, websocket);
 		else req.end();
+		return opts;
 	}
 	/**
 	* Emit the `'error'` and `'close'` events.
@@ -2888,8 +2919,12 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	function receiverOnConclude(code, reason) {
 		const websocket = this[kWebSocket];
 		websocket._closeFrameReceived = true;
-		websocket._closeMessage = reason;
 		websocket._closeCode = code;
+		if (reason.length === 0) websocket._closeMessage = EMPTY_BUFFER;
+		else {
+			websocket._closeMessage = Buffer.allocUnsafeSlow(reason.length);
+			websocket._closeMessage.set(reason);
+		}
 		if (websocket._socket[kWebSocket] === void 0) return;
 		websocket._socket.removeListener("data", socketOnData);
 		process.nextTick(resume, websocket._socket);
@@ -2949,8 +2984,23 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	*/
 	function receiverOnPing(data) {
 		const websocket = this[kWebSocket];
-		if (websocket._autoPong) websocket.pong(data, !this._isServer, NOOP);
+		if (websocket._autoPong && websocket.readyState === WebSocket.OPEN) {
+			if (websocket._maxPendingAutoPongs > 0 && websocket._pendingAutoPongs >= websocket._maxPendingAutoPongs) websocket.terminate();
+			else {
+				websocket._pendingAutoPongs++;
+				websocket.pong(data, !this._isServer, websocket._autoPongComplete);
+			}
+		}
 		websocket.emit("ping", data);
+	}
+	/**
+	* The callback for automatic pong responses.
+	*
+	* @param {WebSocket} websocket The WebSocket instance
+	* @private
+	*/
+	function autoPongComplete(websocket) {
+		websocket._pendingAutoPongs--;
 	}
 	/**
 	* The listener of the `Receiver` `'pong'` event.
@@ -3057,7 +3107,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		}
 	}
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/stream.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/stream.js
 var require_stream = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	require_websocket();
 	const { Duplex } = __require("stream");
@@ -3172,7 +3222,7 @@ var require_stream = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 	module.exports = createWebSocketStream;
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/subprotocol.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/subprotocol.js
 var require_subprotocol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { tokenChars } = require_validation();
 	/**
@@ -3210,7 +3260,7 @@ var require_subprotocol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 	module.exports = { parse };
 }));
-// node_modules/.pnpm/ws@8.21.3/node_modules/ws/lib/websocket-server.js
+// node_modules/.pnpm/ws@8.23.0/node_modules/ws/lib/websocket-server.js
 var require_websocket_server = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const EventEmitter = __require("events");
 	const http = __require("http");
@@ -3255,6 +3305,8 @@ var require_websocket_server = /* @__PURE__ */ __commonJSMin(((exports, module) 
 		*     fragments
 		* @param {Number} [options.maxPayload=104857600] The maximum allowed message
 		*     size
+		* @param {Number} [options.maxPendingAutoPongs=60] The maximum number of
+		*     pending automatic pongs
 		* @param {Boolean} [options.noServer=false] Enable no server mode
 		* @param {String} [options.path] Accept only connections matching this path
 		* @param {(Boolean|Object)} [options.perMessageDeflate=false] Enable/disable
@@ -3276,7 +3328,8 @@ var require_websocket_server = /* @__PURE__ */ __commonJSMin(((exports, module) 
 				autoPong: true,
 				maxBufferedChunks: 262144,
 				maxFragments: 16384,
-				maxPayload: 104857600,
+				maxPayload: 0x6400000,
+				maxPendingAutoPongs: 60,
 				skipUTF8Validation: false,
 				perMessageDeflate: false,
 				handleProtocols: null,

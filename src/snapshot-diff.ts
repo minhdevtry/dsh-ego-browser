@@ -13,6 +13,8 @@
  * filled input reads as a change instead of a removed+added node.
  */
 
+import { diffSummary, diffBaseline, diffNote as enDiffNote } from './english.ts'
+
 export interface SnapshotLine {
   indent: string
   /** Role + accessible name, without the `[...]` marks. */
@@ -118,9 +120,9 @@ export function diffSnapshots(previous: string, next: string): SnapshotDiff {
   }
 
   const changed = added.length > 0 || removed.length > 0 || changedLines.length > 0
-  const summary = changed
+  const summary = diffSummary(changed, added.length, removed.length, changedLines.length, changed
     ? `页面有变化：新增 ${added.length} 行，移除 ${removed.length} 行，变化 ${changedLines.length} 处`
-    : '页面无变化'
+    : '页面无变化')
   return {
     changed,
     addedCount: added.length,
@@ -214,7 +216,7 @@ export class SnapshotCache {
         text,
         tries: opts.tries,
         snapshotId,
-        summary: '首次快照（无上一份基线），返回完整树；下一次 diff 才能比较',
+        summary: diffBaseline('首次快照（无上一份基线），返回完整树；下一次 diff 才能比较'),
         note: diffNote(),
       }
     }
@@ -227,7 +229,7 @@ export class SnapshotCache {
 }
 
 function diffNote(): string {
-  return 'diff 只说明页面变化；要点击/输入，先重新 ego_snapshot 取完整树（ref/loc 才是可操作依据）。'
+  return enDiffNote('diff 只说明页面变化；要点击/输入，先重新 ego_snapshot 取完整树（ref/loc 才是可操作依据）。')
 }
 
 export interface SnapshotContinuation {

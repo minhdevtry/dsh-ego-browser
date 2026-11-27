@@ -24,6 +24,7 @@ const prefs = {
   isolateSpaces: z.boolean().description('Space isolation: false = persistent profile (keep logins across restarts); true = isolated sandbox.'),
   sessionScopedSpaces: z.boolean().description('Give each DSH session its own task space (dsh-agent-<session>) so concurrent sessions and subagents do not share tabs or steal each other\'s active tab. Off = one shared space.'),
   toolProfile: z.union(['full', 'lite']).description('Tool surface: full registers all ego_* tools; lite registers a compact core set to reduce context. Missing/disallowed tools can still be reached with ego_script.'),
+  language: z.union(['auto', 'en', 'zh']).description('Language for tool results, failure hints and ego_help text: auto keeps the upstream default; en forces English; zh forces Chinese. The watch panel / settings UI follow the host/browser locale separately.'),
   idleTimeoutMin: z.number().min(0).max(1440).step(1).description('Auto-stop the backing browser after N minutes without an ego_* call (0 = off). Relaunches on demand at the next call.'),
   disableFrameRelay: z.boolean().description('Disable the live frame relay (watch panel): no ego-cast worker, no screencast capture and no /api/ego stream routes. ego_* tools keep working.'),
   residentExecutor: z.boolean().description('Reuse one resident `ego-browser --serve` process across ego_* calls: the first call pays startup, later calls skip it (~16ms). Off = spawn per call. A dead resident falls back to a fresh spawn automatically.'),
@@ -310,6 +311,7 @@ export function resolveConfig(config: RawConfig = {}): ResolvedConfig {
       ? config.sessionScopedSpaces
       : !(config.sessionScopedSpaces === 'false' || config.sessionScopedSpaces === '0' || config.sessionScopedSpaces === 0),
     toolProfile: config.toolProfile === 'lite' ? 'lite' : 'full',
+    language: config.language === 'en' ? 'en' : config.language === 'zh' ? 'zh' : 'auto',
     idleTimeoutMin: finiteIn(config.idleTimeoutMin, 0, 1440) ? config.idleTimeoutMin : 0,
     // Default false (= frame relay ON, unchanged behavior); the switch is opt-in.
     disableFrameRelay: typeof config.disableFrameRelay === 'boolean' ? config.disableFrameRelay : config.disableFrameRelay === 'true' || config.disableFrameRelay === '1' || config.disableFrameRelay === 1,

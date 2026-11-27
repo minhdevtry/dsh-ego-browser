@@ -13,6 +13,8 @@
  * when it is false; otherwise observe first.
  */
 
+import { hintFor } from './english.ts'
+
 export type EgoFailureCode =
   | 'TIMEOUT'
   | 'LOCATOR_NOT_FOUND'
@@ -150,7 +152,7 @@ export function classifyEgoFailure(tool: string, error: string): EgoFailure {
     code = 'NO_PAYLOAD'
   }
   const actionSent = ACTION_TOOLS.has(tool) && !PRE_ACTION_CODES.has(code)
-  return { code, actionSent, retry: RETRY[code], hint: HINTS[code] }
+  return { code, actionSent, retry: RETRY[code], hint: hintFor(code, HINTS[code]) }
 }
 
 /** The canonical failure value a tool returns (never thrown by design). */

@@ -9,6 +9,7 @@ describe("dual capture config", () => {
       ffmpegFps: 20, ffmpegMaxWidth: 1280, ffmpegBitrateKbps: 4000, ffmpegEncoder: "auto", ffmpegPath: "", githubMirror: "",
       egoCliArgs: "", chromeArgs: "", isolateSpaces: false, sessionScopedSpaces: true, idleTimeoutMin: 0, disableFrameRelay: false,
       toolProfile: "full",
+      language: "auto",
       residentExecutor: false, residentIdleMin: 30, tuiAutoOpenPanel: false, rulesPrompt: true,
       viewportWidth: 0, viewportHeight: 0, deviceScaleFactor: 0,
       useMockKeychain: false, trajectory: false, recordText: false,
@@ -22,6 +23,7 @@ describe("dual capture config", () => {
       ffmpegFps: 20, ffmpegMaxWidth: 1280, ffmpegBitrateKbps: 4000, ffmpegEncoder: "auto", ffmpegPath: "", githubMirror: "",
       egoCliArgs: "", chromeArgs: "", isolateSpaces: false, sessionScopedSpaces: true, idleTimeoutMin: 0, disableFrameRelay: false,
       toolProfile: "full",
+      language: "auto",
       residentExecutor: false, residentIdleMin: 30, tuiAutoOpenPanel: false, rulesPrompt: true,
       viewportWidth: 0, viewportHeight: 0, deviceScaleFactor: 0,
       useMockKeychain: false, trajectory: false, recordText: false,
@@ -33,6 +35,13 @@ describe("dual capture config", () => {
     expect(resolveConfig({}).toolProfile).toBe("full");
     expect(resolveConfig({ toolProfile: "lite" }).toolProfile).toBe("lite");
     expect(resolveConfig({ toolProfile: "bogus" as any }).toolProfile).toBe("full");
+  });
+
+  it("defaults the result language to auto and accepts en/zh", () => {
+    expect(resolveConfig({}).language).toBe("auto");
+    expect(resolveConfig({ language: "en" }).language).toBe("en");
+    expect(resolveConfig({ language: "zh" }).language).toBe("zh");
+    expect(resolveConfig({ language: "bogus" as any }).language).toBe("auto");
   });
 
   it("parses useMockKeychain as an opt-in boolean (#93)", () => {

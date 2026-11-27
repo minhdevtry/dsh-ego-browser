@@ -56,6 +56,7 @@ import { SnapshotCache, parseSnapshotContinuation, sliceSnapshotText } from './s
 import { recordTrajectory, trajectoryDir } from './trajectory.ts'
 import { HUMAN_CHECK_PROBE } from './captcha.ts'
 import { Config as ConfigSchema, resolveConfig, EGO_CLI_BLOCKED, CHROME_BLOCKED, filterArgs, validateEgoBinPath } from './config.ts'
+import { setLanguageSource, statusRulesSummary, actionSuccessHint, helpText, helpPlatformUnavailable, helpNotFound } from './english.ts'
 import { installEgoBrowserSettings } from './settings.ts'
 import { registerEgoBrowserGateway } from './gateway.ts'
 import { ResidentProcess, ResidentNotRunningError, type ResidentFrame } from './resident.ts'
@@ -2276,6 +2277,8 @@ export function apply(ctx: EgoContext, config: RawConfig = {}): void {
   })
   const ffmpegManager = getSharedFfmpegInstallationManager()
   const initialFfmpegConfig = resolveConfig(bridge.source() as RawConfig)
+  // English overlay reads the live config so GUI edits apply without a remount.
+  setLanguageSource(() => resolveConfig(bridge.source() as RawConfig).language)
   void ffmpegManager.check({ configuredPath: initialFfmpegConfig.ffmpegPath, requestedEncoder: initialFfmpegConfig.ffmpegEncoder }).catch(() => {
     /* ignore */
   })
@@ -2634,7 +2637,7 @@ function registerEgoStatus(ctx: EgoContext, cfg: EgoRuntimeConfig, reg: (tool: T
               path: cfg.egoBin,
               exitCode: outcome.exitCode,
               resident: residentDiagnostics(cfg),
-              rulesSummary: STATUS_RULES_SUMMARY,
+              rulesSummary: statusRulesSummary(STATUS_RULES_SUMMARY),
               rulesPrompt: {
                 enabled: cfg.rulesPrompt,
                 registered: rulesSectionRegistered,
@@ -3203,7 +3206,7 @@ function registerActionTools(ctx: EgoContext, cfg: EgoRuntimeConfig, reg: (tool:
   reg(
     t({
       name: 'ego_click',
-      successHint: () => ACTION_SUCCESS_HINT,
+      successHint: () => actionSuccessHint(ACTION_SUCCESS_HINT),
       description:
         'Click an element in the current page. Target with a CSS selector, an xpath=.../loc=.../ref=N value from the LATEST ego_snapshot, or viewport coordinates. On a timeout or missing target, re-snapshot and rebuild the locator; do not replay the same selector. For elements inside a cross-origin iframe use the snapshot ref (CSS selectors only search the main document). Set touch=true for touch-first H5/mobile pages that ignore mouse clicks; holdMs presses and holds at the same point (no movement, so it never drags). See ego_help discipline.',
       parameters: {
@@ -3258,7 +3261,7 @@ function registerActionTools(ctx: EgoContext, cfg: EgoRuntimeConfig, reg: (tool:
   reg(
     t({
       name: 'ego_fill',
-      successHint: () => ACTION_SUCCESS_HINT,
+      successHint: () => actionSuccessHint(ACTION_SUCCESS_HINT),
       description:
         'Type text into an input field. Target with a CSS selector, xpath=..., loc=..., or ref=N from the LATEST ego_snapshot. On a timeout or missing target, re-snapshot instead of retrying the same selector. For inputs inside a cross-origin iframe use the snapshot ref (CSS selectors only search the main document).',
       parameters: {
@@ -3656,7 +3659,7 @@ function registerActionTools(ctx: EgoContext, cfg: EgoRuntimeConfig, reg: (tool:
   reg(
     t({
       name: 'ego_key',
-      successHint: () => ACTION_SUCCESS_HINT,
+      successHint: () => actionSuccessHint(ACTION_SUCCESS_HINT),
       description:
         "Press a keyboard key or shortcut combination on the current page, e.g. 'Enter', 'Tab', 'Control+a', 'Escape', 'ArrowDown'. Useful for forms, shortcuts and navigation. Pass `text` to type a string of characters instead (keyboard.type).",
       parameters: {
@@ -3775,7 +3778,7 @@ function registerActionTools(ctx: EgoContext, cfg: EgoRuntimeConfig, reg: (tool:
   reg(
     t({
       name: 'ego_select',
-      successHint: () => ACTION_SUCCESS_HINT,
+      successHint: () => actionSuccessHint(ACTION_SUCCESS_HINT),
       description:
         'Choose an option in a <select> dropdown by value, label, or index (a single value or an array for multi-select).',
       parameters: {
@@ -3961,7 +3964,7 @@ function registerActionTools(ctx: EgoContext, cfg: EgoRuntimeConfig, reg: (tool:
   reg(
     t({
       name: 'ego_check',
-      successHint: () => ACTION_SUCCESS_HINT,
+      successHint: () => actionSuccessHint(ACTION_SUCCESS_HINT),
       description:
         'Check (tick) or uncheck a checkbox/radio element. Does nothing if already in the desired state.',
       parameters: {
@@ -4428,14 +4431,14 @@ function registerHelpAndDoctor(ctx: EgoContext, cfg: EgoRuntimeConfig, reg: (too
           : undefined
         if (entry !== undefined) {
           const text = isEgoHelpVisible(q, env)
-            ? entry.text
-            : `${entry.text}\n\n（当前平台不可用：该主题仅在 macOS / Windows 提供）`
+            ? helpText(q, entry.text)
+            : helpPlatformUnavailable(helpText(q, entry.text))
           return { ok: true, topic: q, text }
         }
         const available = Object.keys(EGO_HELP_DOCS).filter((name) => isEgoHelpVisible(name, env))
         const text = q
-          ? `未找到 topic "${q}"。可用: ${available.filter((name) => name !== 'overview').join(', ')}\n\noverview: ${EGO_HELP_DOCS.overview!.text}`
-          : EGO_HELP_DOCS.overview!.text
+          ? helpNotFound(q, available.filter((name) => name !== 'overview'), EGO_HELP_DOCS.overview!.text)
+          : helpText('overview', EGO_HELP_DOCS.overview!.text)
         return { ok: true, topic: q || 'overview', text }
       },
       presentCall: (args: unknown) => ({ card: 'generic', title: toolCallTitle('ego_help', args), kind: 'other', rawInput: null }),

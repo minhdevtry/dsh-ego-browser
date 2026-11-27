@@ -145,6 +145,8 @@ export interface ResolvedConfig {
   sessionScopedSpaces: boolean
   /** Tool surface: full (default) or a compact lite profile. */
   toolProfile: 'full' | 'lite'
+  /** Language for host-side tool results / hints / ego_help: auto (upstream default), en, or zh. */
+  language: 'auto' | 'en' | 'zh'
   /** Minutes without an ego_* call before the backing browser is auto-stopped. 0 = off. */
   idleTimeoutMin: number
   /** True = the live frame relay (ego-cast worker + cast routes) is turned off entirely. */

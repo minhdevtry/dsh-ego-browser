@@ -404,6 +404,7 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 			settingsHide: 'Hide settings',
 			relayDisabledTitle: 'Live frame relay is disabled',
 			relayDisabledBody: 'Turn off “Disable live frame relay” in Settings → Plugins → ego-browser to see the live view here. No stream is opened meanwhile.',
+			h264Unsupported: 'This browser does not support this H.264 stream',
 		}
 		var watchZh = {
 			title: 'Agent 浏览器',
@@ -494,6 +495,7 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 			settingsHide: '收起设置',
 			relayDisabledTitle: '画面回传已禁用',
 			relayDisabledBody: '在「设置 → 插件 → ego-browser」中关闭「禁用画面回传」后，这里才会显示实时画面。禁用期间不会建立任何拉流连接。',
+			h264Unsupported: '当前浏览器不支持此 H.264 流',
 		}
 		var watchDict = { en: watchEn, zh: watchZh }
 		function wt(key, params = undefined) {
@@ -1524,7 +1526,7 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 		}
 
 		function createMsePlayer(video, generation, mime, onFailure) {
-			if (!window.MediaSource || !window.MediaSource.isTypeSupported(mime)) { onFailure('当前浏览器不支持此 H.264 流'); return function () {} }
+			if (!window.MediaSource || !window.MediaSource.isTypeSupported(mime)) { onFailure(wt('h264Unsupported')); return function () {} }
 			var mediaSource = new MediaSource()
 			var objectUrl = URL.createObjectURL(mediaSource)
 			var abort = new AbortController()
