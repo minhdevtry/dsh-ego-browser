@@ -114,7 +114,13 @@ export class CamoufoxScreencast {
 
     this.cast = await this.page.screencast.start({
       size: { width, height }, quality: 80,
-      onFrame: ({ data }: { data: Buffer }) => { for (const c of this.clients) if (c.readyState === 1) c.send(data) },
+      onFrame: ({ data }: { data: Buffer }) => {
+        // Never let a closing/closed socket throw into the Playwright event loop
+        // (an unhandled exception here would crash the DSH host).
+        for (const c of this.clients) {
+          try { if (c.readyState === 1) c.send(data) } catch { this.clients.delete(c) }
+        }
+      },
     }) as any
 
     const server = createServer((_req, res) => { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(viewerHtml(wsPort)) })
