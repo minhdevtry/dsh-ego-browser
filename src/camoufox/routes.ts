@@ -49,6 +49,16 @@ export function registerCamoufoxRoutes(ctx: CtxLike, embedded: EmbeddedCamoufox)
     const r = await embedded.navigate(String(body.url ?? ''))
     sendJson(res, 200, r)
   })
+  reg('/api/ego/camoufox/resize', async (req, res) => {
+    const body = await readBody(req)
+    embedded.resize(Number(body.width) || 0, Number(body.height) || 0)
+    sendJson(res, 200, { ok: true })
+  })
+  reg('/api/ego/camoufox/paste', async (req, res) => {
+    const body = await readBody(req)
+    const r = await embedded.paste(String(body.text ?? ''))
+    sendJson(res, 200, r)
+  })
 
   ctx.effect?.(() => () => { for (const d of disposers) { try { d() } catch {} } }, 'ego-browser: camoufox routes')
 }

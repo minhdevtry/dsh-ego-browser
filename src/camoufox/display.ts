@@ -110,6 +110,18 @@ export class CamoufoxDisplay {
   getInfo(): DisplayInfo { return { ...this.info } }
   getPage(): Page | null { return this.page }
   getBrowser(): Browser | null { return this.browser }
+  getDisplay(): string { return this.info.display }
+
+  // Force the X display to a given size so the remote desktop matches the panel
+  // viewport exactly (fixes initial misalignment / offset clicks). The window-fill
+  // poller then resizes the browser window to match.
+  resize(w: number, h: number): void {
+    if (!this.info.running || !this.info.display) return
+    const adj = Math.max(64, Math.floor(w / 4) * 4)
+    const hh = Math.max(64, Math.floor(h))
+    const p = spawn('xrandr', ['--display', this.info.display, '--fb', `${adj}x${hh}`], { env: { ...process.env, DISPLAY: this.info.display }, stdio: 'ignore' })
+    p.on('error', () => {})
+  }
 
   async start(): Promise<DisplayInfo> {
     if (this.info.running) return this.getInfo()

@@ -89,6 +89,18 @@ export class EmbeddedCamoufox {
   async stop(): Promise<void> { await this.display.stop(); this.controlMode = 'manual' }
   async dispose(): Promise<void> { await this.stop() }
 
+  // Panel-driven resize so the remote desktop always matches the panel viewport.
+  resize(w: number, h: number): void { this.display.resize(w, h) }
+
+  // User-initiated paste: insert local clipboard text into the focused remote
+  // element (Ctrl+V does not cross the iframe/remote boundary by default).
+  async paste(text: string): Promise<{ ok: boolean; error?: string }> {
+    const page = this.display.getPage()
+    if (!page) return { ok: false, error: 'No page open.' }
+    try { await page.keyboard.insertText(text); return { ok: true } }
+    catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) } }
+  }
+
   private requirePage(): Page | null { return this.display.getPage() }
 
   private gate(): { ok: false; code: string; error: string } | null {

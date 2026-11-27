@@ -3075,6 +3075,28 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 					.catch(function () {}).finally(function () { setBusy(false) })
 			}
 			var isAgent = info.controlMode === 'agent'
+			var wrapRef = React.useRef(null)
+			// Keep the remote desktop sized to the panel viewport so clicks map 1:1
+			// (fixes the "offset until I drag the panel" problem). Debounced.
+			React.useEffect(function () {
+				var el = wrapRef.current
+				if (!el || typeof ResizeObserver === 'undefined') return
+				var t = null
+				function send() {
+					var w = el.clientWidth, hh = el.clientHeight
+					if (w > 0 && hh > 0) fetchEgo('/api/ego/camoufox/resize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ width: w, height: hh }) }).catch(function () {})
+				}
+				var ro = new ResizeObserver(function () { if (t) clearTimeout(t); t = setTimeout(send, 150) })
+				ro.observe(el); send()
+				return function () { ro.disconnect(); if (t) clearTimeout(t) }
+			}, [info.running, info.viewerUrl])
+			function doPaste() {
+				if (navigator.clipboard && navigator.clipboard.readText) {
+					navigator.clipboard.readText().then(function (txt) {
+						if (txt) fetchEgo('/api/ego/camoufox/paste', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: txt }) }).catch(function () {})
+					}).catch(function () {})
+				}
+			}
 			var bar = { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--ego-border-soft, rgba(0,0,0,.1))', flexShrink: 0 }
 			var btn = { padding: '4px 10px', borderRadius: 6, border: '1px solid var(--ego-border, rgba(0,0,0,.15))', background: 'var(--ego-toolbar, #f3f4f6)', cursor: 'pointer', fontSize: 12 }
 			return h('div', { className: 'dsh-ego-side-root', style: { display: 'flex', flexDirection: 'column', height: '100%' } },
@@ -3087,10 +3109,12 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 				),
 				h('div', { style: { display: 'flex', gap: 6, padding: '6px 10px', flexShrink: 0 } },
 					h('input', { style: { flex: 1, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--ego-border, rgba(0,0,0,.15))', fontSize: 12, background: 'var(--ego-surface, #fff)', color: 'inherit' }, placeholder: 'https://…', value: addr, onChange: function (e) { setAddr(e.target.value) }, onKeyDown: function (e) { if (e.key === 'Enter') post('/api/ego/camoufox/navigate', { url: addr }) } }),
-					h('button', { type: 'button', style: btn, disabled: busy, onClick: function () { post('/api/ego/camoufox/navigate', { url: addr }) } }, 'Go')
+					h('button', { type: 'button', style: btn, disabled: busy, onClick: function () { post('/api/ego/camoufox/navigate', { url: addr }) } }, 'Go'),
+					h('button', { type: 'button', style: btn, title: 'Paste local clipboard into the page', onClick: doPaste }, 'Paste')
 				),
 				info.running && info.viewerUrl
-					? h('iframe', { src: info.viewerUrl, style: { flex: 1, width: '100%', border: 0, minHeight: 0, background: '#101418' }, allow: 'clipboard-write' })
+					? h('div', { ref: wrapRef, style: { flex: 1, minHeight: 0, position: 'relative', background: '#101418' } },
+						h('iframe', { src: info.viewerUrl, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }, allow: 'clipboard-read; clipboard-write' }))
 					: h('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 } },
 						h('div', { style: { fontSize: 13, opacity: .7 } }, 'Camoufox is not running.'),
 						h('button', { type: 'button', style: btn, disabled: busy, onClick: function () { post('/api/ego/camoufox/start', {}) } }, busy ? 'Starting…' : 'Start browser')
