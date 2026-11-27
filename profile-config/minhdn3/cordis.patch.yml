@@ -17,3 +17,5 @@
     camoufoxGeoip: true
     camoufoxProxy: ""
     camoufoxIdleMin: 10
+    camoufoxEmbedded: true
+    disableFrameRelay: true

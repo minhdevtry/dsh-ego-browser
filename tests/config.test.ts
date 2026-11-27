@@ -17,6 +17,7 @@ describe("dual capture config", () => {
       camoufoxGeoip: false,
       camoufoxProxy: "",
       camoufoxIdleMin: 10,
+      camoufoxEmbedded: false,
       residentExecutor: false, residentIdleMin: 30, tuiAutoOpenPanel: false, rulesPrompt: true,
       viewportWidth: 0, viewportHeight: 0, deviceScaleFactor: 0,
       useMockKeychain: false, trajectory: false, recordText: false,
@@ -38,6 +39,7 @@ describe("dual capture config", () => {
       camoufoxGeoip: false,
       camoufoxProxy: "",
       camoufoxIdleMin: 10,
+      camoufoxEmbedded: false,
       residentExecutor: false, residentIdleMin: 30, tuiAutoOpenPanel: false, rulesPrompt: true,
       viewportWidth: 0, viewportHeight: 0, deviceScaleFactor: 0,
       useMockKeychain: false, trajectory: false, recordText: false,
@@ -73,6 +75,7 @@ describe("dual capture config", () => {
       camoufoxGeoip: false,
       camoufoxProxy: "",
       camoufoxIdleMin: 10,
+      camoufoxEmbedded: false,
     });
     expect(resolveConfig({ camoufoxEnabled: true, camoufoxHeadless: false, camoufoxProxy: " http://127.0.0.1:7890 ", camoufoxIdleMin: 0 })).toMatchObject({
       camoufoxEnabled: true,

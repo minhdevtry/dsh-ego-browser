@@ -40,6 +40,8 @@ const HOST_EXTERNALS = [
   // the profile at runtime and must never be copied into the host bundle.
   'camoufox',
   'playwright-core',
+  // WebSocket server for the embedded Camoufox VNC proxy (optional backend).
+  'ws',
 ]
 
 /** Browser-side peers the ModuleLoader resolves from profile node_modules. */

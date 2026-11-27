@@ -39,6 +39,7 @@ const prefs = {
   camoufoxGeoip: z.boolean().description('Match Camoufox timezone/locale/geolocation/WebRTC IP to the proxy exit IP. Default false; requires a proxy and downloads a GeoIP database on first use.'),
   camoufoxProxy: z.string().description('Optional Camoufox proxy server URL, e.g. http://127.0.0.1:7890. Empty = direct connection. Credentials are never returned by status.'),
   camoufoxIdleMin: z.number().min(0).max(1440).step(1).description('Close the owned Camoufox browser after N minutes without an ego_camoufox call. Default 10; 0 disables idle cleanup.'),
+  camoufoxEmbedded: z.boolean().description('Camoufox-only mode: embed the real Camoufox browser directly in the DSH panel via noVNC with a manual/agent control gate, and disable the ego-lite Chrome tools. Default off.'),
   chromePath: z.string().description('Path to Chrome/Chromium. Empty = auto-detect.'),
   // macOS 27 + Chrome 156: Chrome's login-Keychain path silently fails to write
   // cookies to disk, so task-space logins vanish after a browser restart (#93).
@@ -349,5 +350,6 @@ export function resolveConfig(config: RawConfig = {}): ResolvedConfig {
     camoufoxGeoip: booleanSetting(config.camoufoxGeoip, false),
     camoufoxProxy: typeof config.camoufoxProxy === 'string' ? config.camoufoxProxy.trim() : '',
     camoufoxIdleMin: finiteIn(config.camoufoxIdleMin, 0, 1440) ? config.camoufoxIdleMin : 10,
+    camoufoxEmbedded: booleanSetting(config.camoufoxEmbedded, false),
   }
 }

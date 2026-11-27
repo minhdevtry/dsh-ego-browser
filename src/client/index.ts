@@ -3059,6 +3059,45 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 		// pointer/wheel events on the live <img> to controller methods. The
 		// controller holds a direct ref to the <img> so SSE frames swap src at rAF
 		// cadence without triggering React re-renders per frame.
+		// Camoufox-only embedded panel: shows the real Camoufox browser directly via
+		// noVNC (single browser, no Chrome middleman) plus the manual/agent gate.
+		function CamoufoxEmbeddedPanel(props) {
+			var h = React.createElement
+			var info = props.info
+			var addrState = React.useState(info.currentUrl && info.currentUrl !== 'about:blank' ? info.currentUrl : '')
+			var addr = addrState[0], setAddr = addrState[1]
+			var busyState = React.useState(false)
+			var busy = busyState[0], setBusy = busyState[1]
+			function post(path, body) {
+				setBusy(true)
+				return fetchEgo(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+					.then(function (r) { return r.json() }).then(function (j) { props.refresh(); return j })
+					.catch(function () {}).finally(function () { setBusy(false) })
+			}
+			var isAgent = info.controlMode === 'agent'
+			var bar = { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--ego-border-soft, rgba(0,0,0,.1))', flexShrink: 0 }
+			var btn = { padding: '4px 10px', borderRadius: 6, border: '1px solid var(--ego-border, rgba(0,0,0,.15))', background: 'var(--ego-toolbar, #f3f4f6)', cursor: 'pointer', fontSize: 12 }
+			return h('div', { className: 'dsh-ego-side-root', style: { display: 'flex', flexDirection: 'column', height: '100%' } },
+				h('div', { style: bar },
+					h('b', { style: { fontSize: 13 } }, 'Camoufox'),
+					h('span', { style: { fontSize: 11, padding: '2px 8px', borderRadius: 10, background: isAgent ? 'rgba(245,158,11,.15)' : 'rgba(34,197,94,.15)', color: isAgent ? '#b45309' : '#15803d' } }, isAgent ? 'Agent may control' : 'You control · agent locked'),
+					h('button', { type: 'button', style: btn, disabled: busy, onClick: function () { post('/api/ego/camoufox/control', { mode: isAgent ? 'manual' : 'agent' }) } }, isAgent ? 'Take back control' : 'Allow agent'),
+					h('span', { style: { flex: 1 } }),
+					h('button', { type: 'button', style: btn, disabled: busy, onClick: function () { post('/api/ego/camoufox/stop', {}) } }, 'Stop')
+				),
+				h('div', { style: { display: 'flex', gap: 6, padding: '6px 10px', flexShrink: 0 } },
+					h('input', { style: { flex: 1, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--ego-border, rgba(0,0,0,.15))', fontSize: 12, background: 'var(--ego-surface, #fff)', color: 'inherit' }, placeholder: 'https://…', value: addr, onChange: function (e) { setAddr(e.target.value) }, onKeyDown: function (e) { if (e.key === 'Enter') post('/api/ego/camoufox/navigate', { url: addr }) } }),
+					h('button', { type: 'button', style: btn, disabled: busy, onClick: function () { post('/api/ego/camoufox/navigate', { url: addr }) } }, 'Go')
+				),
+				info.running && info.viewerUrl
+					? h('iframe', { src: info.viewerUrl, style: { flex: 1, width: '100%', border: 0, minHeight: 0, background: '#101418' }, allow: 'clipboard-write' })
+					: h('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 } },
+						h('div', { style: { fontSize: 13, opacity: .7 } }, 'Camoufox is not running.'),
+						h('button', { type: 'button', style: btn, disabled: busy, onClick: function () { post('/api/ego/camoufox/start', {}) } }, busy ? 'Starting…' : 'Start browser')
+					)
+			)
+		}
+
 		function EgoBrowserTab(props) {
 			var visible = props.visible
 			var visibleRef = React.useRef(visible)
@@ -3086,6 +3125,23 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 				if (addressEditingRef.current) return
 				setAddress((state.currentSpace && state.currentSpace.url) || '')
 			}, [state.currentTargetId, state.currentSpace && state.currentSpace.url])
+
+			// Camoufox-only embedded mode: poll the host for the embedded browser
+			// info; when enabled, the panel renders the noVNC view directly instead
+			// of the ego-lite Chrome screencast (no browser-in-browser).
+			var cfInfoState = React.useState(null)
+			var cfInfo = cfInfoState[0]
+			var setCfInfo = cfInfoState[1]
+			React.useEffect(function () {
+				if (!visible) return
+				var alive = true
+				function poll() {
+					fetchEgo('/api/ego/camoufox').then(function (r) { return r.json() }).then(function (j) { if (alive) setCfInfo(j) }).catch(function () {})
+				}
+				poll()
+				var timer = window.setInterval(poll, 2000)
+				return function () { alive = false; window.clearInterval(timer) }
+			}, [visible])
 
 			var imgRef = React.useRef(null)
 			var videoRef = React.useRef(null)
@@ -3815,6 +3871,10 @@ const fetchEgo = function (path: string, init?: RequestInit) { return fetch(egoR
 						)
 					)
 				)
+			}
+
+			if (cfInfo && cfInfo.enabled) {
+				return h(CamoufoxEmbeddedPanel, { info: cfInfo, refresh: function () { fetchEgo('/api/ego/camoufox').then(function (r) { return r.json() }).then(setCfInfo).catch(function () {}) } })
 			}
 
 			return h('div', { className: 'dsh-ego-side-root', ref: rootRef },

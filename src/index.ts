@@ -66,6 +66,8 @@ import { parseStorageState, serializeStorageState, collectStorageExpression, app
 import { humanMousePath, humanTypingDelays, seededRng } from './stealth/humanize.ts'
 import { CamoufoxEngine } from './camoufox/engine.ts'
 import { registerCamoufoxTool } from './camoufox/tools.ts'
+import { EmbeddedCamoufox } from './camoufox/embedded.ts'
+import { registerCamoufoxRoutes } from './camoufox/routes.ts'
 import { installEgoBrowserSettings } from './settings.ts'
 import { registerEgoBrowserGateway } from './gateway.ts'
 import { ResidentProcess, ResidentNotRunningError, type ResidentFrame } from './resident.ts'
@@ -944,6 +946,7 @@ interface EgoRuntimeConfig {
   readonly camoufoxGeoip: boolean
   readonly camoufoxProxy: string
   readonly camoufoxIdleMin: number
+  readonly camoufoxEmbedded: boolean
   /** Language for host-side tool results / hints / ego_help (English overlay). */
   readonly language: ResolvedConfig['language']
 }
@@ -2387,6 +2390,7 @@ export function apply(ctx: EgoContext, config: RawConfig = {}): void {
     get camoufoxGeoip() { return resolveConfig(bridge.source() as RawConfig).camoufoxGeoip },
     get camoufoxProxy() { return resolveConfig(bridge.source() as RawConfig).camoufoxProxy },
     get camoufoxIdleMin() { return resolveConfig(bridge.source() as RawConfig).camoufoxIdleMin },
+    get camoufoxEmbedded() { return resolveConfig(bridge.source() as RawConfig).camoufoxEmbedded },
     get language() { return resolveConfig(bridge.source() as RawConfig).language },
     // Live getter: the rules section reads it on every assembly pass, so toggling
     // the setting takes effect without re-registering the section.
@@ -2442,16 +2446,24 @@ export function apply(ctx: EgoContext, config: RawConfig = {}): void {
     // Cordis lifecycle: unregister the tool when the plugin unmounts.
     ctx.effect?.(() => dispose)
   }
-  registerEgoStatus(ctx, cfg, reg)
-  registerAuthFlush(ctx, cfg, reg)
-  registerLoginImport(ctx, cfg, reg)
-  registerActionTools(ctx, cfg, reg)
-  registerReplayTool(ctx, cfg, reg)
+  // Camoufox-only embedded mode: the real Camoufox browser is shown directly in
+  // the DSH panel (noVNC) with a manual/agent control gate. In this mode the
+  // ego-lite Chrome tool surface is NOT registered, so Camoufox is the only
+  // browser engine the agent can drive.
+  const embedded = new EmbeddedCamoufox(() => {
+    const c = resolveConfig(bridge.source() as RawConfig)
+    return { enabled: c.camoufoxEmbedded, humanize: c.camoufoxHumanize, geoip: c.camoufoxGeoip, proxy: c.camoufoxProxy || undefined }
+  })
+  if (!cfg.camoufoxEmbedded) {
+    registerEgoStatus(ctx, cfg, reg)
+    registerAuthFlush(ctx, cfg, reg)
+    registerLoginImport(ctx, cfg, reg)
+    registerActionTools(ctx, cfg, reg)
+    registerReplayTool(ctx, cfg, reg)
+    registerStealthTools(ctx, cfg, reg)
+  }
   registerHelpAndDoctor(ctx, cfg, reg)
-  registerStealthTools(ctx, cfg, reg)
-  // Optional second backend: one compact tool, no browser work until enabled
-  // and first used. Keeping it outside registerActionTools preserves upstream
-  // merge locality and leaves every existing ego_* tool on ego-lite Chrome.
+  // Headless Camoufox backend (used when embedded mode is off).
   const camoufoxEngine = new CamoufoxEngine(() => {
     const c = resolveConfig(bridge.source() as RawConfig)
     return {
@@ -2462,13 +2474,21 @@ export function apply(ctx: EgoContext, config: RawConfig = {}): void {
       idleTimeoutMs: c.camoufoxIdleMin * 60_000,
     }
   })
+  const camoufoxBackend = {
+    execute: (action: string, args?: Record<string, unknown>) =>
+      (resolveConfig(bridge.source() as RawConfig).camoufoxEmbedded ? embedded.execute(action, args) : camoufoxEngine.execute(action as any, args)),
+    status: () => (resolveConfig(bridge.source() as RawConfig).camoufoxEmbedded ? embedded.status() : camoufoxEngine.status()),
+    dispose: async () => { await camoufoxEngine.dispose(); await embedded.dispose() },
+  }
   registerCamoufoxTool(
     reg,
-    camoufoxEngine,
-    () => resolveConfig(bridge.source() as RawConfig).camoufoxEnabled,
+    camoufoxBackend,
+    () => { const c = resolveConfig(bridge.source() as RawConfig); return c.camoufoxEnabled || c.camoufoxEmbedded },
     (args, _exec, run) => observeEgoTool(cfg, 'ego_camoufox', args, run),
   )
-  ctx.effect?.(() => { void camoufoxEngine.dispose() }, 'ego-browser: Camoufox backend')
+  ctx.effect?.(() => { void camoufoxEngine.dispose(); void embedded.dispose() }, 'ego-browser: Camoufox backend')
+  // Embedded panel routes (viewer info + control gate + navigation).
+  ctx.inject?.(['webServer'], (wctx) => { registerCamoufoxRoutes(wctx as EgoContext, embedded) })
   // Native operating rules (no skill): a system-prompt section that stays empty
   // until this process has seen an ego_* call. Feature-detected, so a host
   // without the systemPrompt service is unaffected; `rulesPrompt=false` keeps

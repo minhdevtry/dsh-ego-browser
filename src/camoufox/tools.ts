@@ -2,7 +2,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export interface CamoufoxToolEngine {
   execute(action: string, args?: Record<string, unknown>): Promise<Record<string, unknown>>
-  status(): Record<string, unknown>
+  status?(): Record<string, unknown>
   dispose(): Promise<void>
 }
 
@@ -62,7 +62,10 @@ export function registerCamoufoxTool(
     execute: async (args: Record<string, unknown>, exec: unknown) => {
       const run = async (): Promise<Record<string, unknown>> => {
         const action = typeof args.action === 'string' ? args.action : 'status'
-        if (action === 'status') return { ...engine.status(), enabled: enabled() }
+        if (action === 'status') {
+          const st = engine.status ? engine.status() : await engine.execute('status', args)
+          return { ...st, enabled: enabled() }
+        }
         if (!enabled()) return { ok: false, code: 'DISABLED', error: 'Camoufox backend is disabled. Set camoufoxEnabled=true in ego-browser plugin config. Existing ego_* Chrome tools are unchanged.' }
         const result = await engine.execute(action, args)
         return { ...result, enabled: true }

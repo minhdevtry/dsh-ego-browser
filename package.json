@@ -52,7 +52,8 @@
   "optionalDependencies": {
     "camoufox": "0.5.9",
     "impit": "0.13.1",
-    "playwright-core": "1.62.1"
+    "playwright-core": "1.62.1",
+    "ws": "8.23.0"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-client-locale": ">=0.1.2-rc.1",
@@ -104,7 +105,7 @@
     "tsdown": "^0.23.7",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0",
-    "ws": "^8.18.0"
+    "ws": "8.18.0"
   },
   "engines": {
     "node": ">=22"

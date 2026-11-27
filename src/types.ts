@@ -172,6 +172,7 @@ export interface ResolvedConfig {
   camoufoxGeoip: boolean
   camoufoxProxy: string
   camoufoxIdleMin: number
+  camoufoxEmbedded: boolean
   chromePath: string
   /** macOS only: pass `--use-mock-keychain` to Chrome so cookies flush to disk (issue #93). */
   useMockKeychain: boolean
