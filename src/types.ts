@@ -163,6 +163,8 @@ export interface ResolvedConfig {
   trajectory: boolean
   /** Include raw ego_fill/ego_key text in trajectories; default off. */
   recordText: boolean
+  /** Stealth kit: human-like input paths/timing for ego_human_* tools; default off. */
+  humanize: boolean
   chromePath: string
   /** macOS only: pass `--use-mock-keychain` to Chrome so cookies flush to disk (issue #93). */
   useMockKeychain: boolean

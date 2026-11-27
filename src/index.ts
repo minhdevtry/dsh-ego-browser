@@ -35,7 +35,7 @@
  * 加工具：在 registerActionTools 里 reg(t({...}))，并同步 EGO_HELP_INDEX，跑 npm run build。
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { chmodSync, existsSync, readdirSync, statSync } from 'node:fs'
+import { chmodSync, existsSync, readdirSync, statSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { homedir } from 'node:os'
@@ -57,6 +57,13 @@ import { recordTrajectory, trajectoryDir } from './trajectory.ts'
 import { HUMAN_CHECK_PROBE } from './captcha.ts'
 import { Config as ConfigSchema, resolveConfig, EGO_CLI_BLOCKED, CHROME_BLOCKED, filterArgs, validateEgoBinPath } from './config.ts'
 import { setLanguageSource, statusRulesSummary, actionSuccessHint, helpText, helpPlatformUnavailable, helpNotFound } from './english.ts'
+// Stealth kit (engine-agnostic antidetect layers). See docs/agents + spec issue #1.
+import { detectAntiBot, looksBlocked } from './stealth/antibot-detect.ts'
+import { ClearanceCache } from './stealth/clearance.ts'
+import { smartFetch } from './stealth/http-impit.ts'
+import { auditFingerprint, collectFingerprintExpression } from './stealth/fingerprint-audit.ts'
+import { parseStorageState, serializeStorageState, collectStorageExpression, applyStorageExpression } from './stealth/storage-state.ts'
+import { humanMousePath, humanTypingDelays, seededRng } from './stealth/humanize.ts'
 import { installEgoBrowserSettings } from './settings.ts'
 import { registerEgoBrowserGateway } from './gateway.ts'
 import { ResidentProcess, ResidentNotRunningError, type ResidentFrame } from './resident.ts'
@@ -185,6 +192,21 @@ function humanCheckScript(space: string | number): string {
     `let __hc = null\n` +
     `try { __hc = await page.evaluate(${j(HUMAN_CHECK_PROBE)}) } catch { __hc = null }\n` +
     `console.log('${SENTINEL}' + JSON.stringify({ ok: true, humanCheck: __hc }))\n`
+  )
+}
+
+// ── Stealth kit shared state ───────────────────────────────────────────────
+// In-memory cf_clearance cache shared across ego_smart_fetch calls (module
+// scope, like snapshotCache). Bounded LRU; cookie + UA travel together, TTL ≤ 24h.
+const clearanceCache = new ClearanceCache()
+
+/** Evaluate a collection expression in the page and return { ok, result }. */
+function stealthEvalScript(space: string | number, expression: string): string {
+  return (
+    `${useSpace(space)}${ensureRealTab()}${SAFE_FN}` +
+    `let __r = null\n` +
+    `try { __r = await page.evaluate(${j(expression)}) } catch (e) { __r = { __error: String((e && e.message) || e) } }\n` +
+    `console.log('${SENTINEL}' + JSON.stringify({ ok: true, result: safe(__r) }))\n`
   )
 }
 
@@ -912,6 +934,10 @@ interface EgoRuntimeConfig {
   readonly trajectory: boolean
   /** Include raw ego_fill/ego_key text in trajectories; default off. */
   readonly recordText: boolean
+  /** Stealth kit: human-like input paths/timing; default off. */
+  readonly humanize: boolean
+  /** Language for host-side tool results / hints / ego_help (English overlay). */
+  readonly language: ResolvedConfig['language']
 }
 
 interface ExecLike {
@@ -2346,6 +2372,8 @@ export function apply(ctx: EgoContext, config: RawConfig = {}): void {
     // settings toggle takes effect without a host restart.
     get trajectory() { return resolveConfig(bridge.source() as RawConfig).trajectory },
     get recordText() { return resolveConfig(bridge.source() as RawConfig).recordText },
+    get humanize() { return resolveConfig(bridge.source() as RawConfig).humanize },
+    get language() { return resolveConfig(bridge.source() as RawConfig).language },
     // Live getter: the rules section reads it on every assembly pass, so toggling
     // the setting takes effect without re-registering the section.
     get rulesPrompt() { return resolveConfig(bridge.source() as RawConfig).rulesPrompt },
@@ -2406,6 +2434,7 @@ export function apply(ctx: EgoContext, config: RawConfig = {}): void {
   registerActionTools(ctx, cfg, reg)
   registerReplayTool(ctx, cfg, reg)
   registerHelpAndDoctor(ctx, cfg, reg)
+  registerStealthTools(ctx, cfg, reg)
   // Native operating rules (no skill): a system-prompt section that stays empty
   // until this process has seen an ego_* call. Feature-detected, so a host
   // without the systemPrompt service is unaffected; `rulesPrompt=false` keeps
@@ -4242,6 +4271,190 @@ function registerReplayTool(ctx: EgoContext, cfg: EgoRuntimeConfig, reg: (tool: 
       presentCall: (args: unknown) => ({ card: 'generic', title: toolCallTitle('ego_replay', args), kind: 'other', rawInput: null }),
     } as unknown as DefineToolOpts),
   )
+}
+
+
+// ── stealth kit: engine-agnostic antidetect tools (spec issue #1) ─────────
+/** Human-like mouse move + click along a generated path (CDP events are trusted). */
+function humanClickScript(space: string | number, x: number, y: number, seed: number): string {
+  const rng = seededRng(seed)
+  const start = { x: Math.max(0, x - 80 - rng() * 160), y: Math.max(0, y - 60 - rng() * 120) }
+  const path = humanMousePath(start, { x, y }, rng)
+  let moves = ''
+  let prevT = 0
+  for (const pt of path) {
+    const dt = Math.max(0, Math.round(pt.t - prevT))
+    prevT = pt.t
+    moves += `await page.mouse.move(${Math.round(pt.x)}, ${Math.round(pt.y)})\n`
+    if (dt > 0) moves += `await page.waitForTimeout(${dt})\n`
+  }
+  return (
+    `${useSpace(space)}${ensureRealTab()}` +
+    moves +
+    `await page.mouse.down()\n` +
+    `await page.waitForTimeout(${40 + Math.round(rng() * 80)})\n` +
+    `await page.mouse.up()\n` +
+    `console.log('${SENTINEL}' + JSON.stringify({ ok: true, clicked: { x: ${x}, y: ${y} }, steps: ${path.length} }))\n`
+  )
+}
+
+/** Register the stealth-kit tools. Additive; upstream tool builders untouched. */
+function registerStealthTools(ctx: EgoContext, cfg: EgoRuntimeConfig, reg: (tool: ToolHandle) => void): void {
+  const okSchema = { schema: { type: 'object', additionalProperties: true, properties: { ok: { type: 'boolean', required: true } } }, render: renderText }
+  const present = (name: string) => (args: unknown) => ({ card: 'generic', title: toolCallTitle(name, args), kind: 'other', rawInput: null })
+
+  reg(defineTool({
+    name: 'ego_detect_antibot',
+    description: 'Detect which anti-bot vendor guards the current page (Cloudflare, DataDome, Akamai, PerimeterX, Imperva, reCAPTCHA, hCaptcha) and whether an interactive challenge is showing. Returns { vendor, challenge, confidence, evidence }. Read-only: never clicks or solves. Use before scraping to decide whether to escalate to a real browser session or ask the human.',
+    parameters: { space: spaceParam },
+    output: okSchema,
+    timeoutMs: 20_000,
+    execute: async (args: Record<string, unknown>, exec: ToolExec) =>
+      withEgoLock(() => observeEgoTool(cfg, 'ego_detect_antibot', args, async () => {
+        markEgoToolCall(callingSessionId(exec))
+        const expr = '(() => ({ html: (document.documentElement && document.documentElement.outerHTML || "").slice(0, 200000), title: document.title || "", url: location.href }))()'
+        const result = await runWithStaleSpaceRetry(ctx, cfg, { signal: exec?.signal } as ToolExec, () => stealthEvalScript(str(args.space, cfg.defaultSpace), expr))
+        if (!result.ok) return { ok: false, error: result.error }
+        const p = parseSentinel(result.stdout) || {}
+        const signals = (p.result || {}) as Record<string, unknown>
+        if (signals.__error) return { ok: false, error: String(signals.__error) }
+        return { ok: true, ...detectAntiBot({ html: str(signals.html, ''), title: str(signals.title, ''), url: str(signals.url, '') }) }
+      })),
+    presentCall: present('ego_detect_antibot'),
+  } as unknown as DefineToolOpts))
+
+  reg(defineTool({
+    name: 'ego_fingerprint_audit',
+    description: 'Self-check the agent browser fingerprint for internal contradictions that reveal automation/spoofing: UA vs Client Hints / platform, WebGL vendor/renderer vs OS, navigator.webdriver, impossible screen metrics, timezone/locale. Returns { consistent, mismatches[] }. Read-only. Use to diagnose why a site may be flagging the browser.',
+    parameters: { space: spaceParam },
+    output: okSchema,
+    timeoutMs: 20_000,
+    execute: async (args: Record<string, unknown>, exec: ToolExec) =>
+      withEgoLock(() => observeEgoTool(cfg, 'ego_fingerprint_audit', args, async () => {
+        markEgoToolCall(callingSessionId(exec))
+        const result = await runWithStaleSpaceRetry(ctx, cfg, { signal: exec?.signal } as ToolExec, () => stealthEvalScript(str(args.space, cfg.defaultSpace), collectFingerprintExpression()))
+        if (!result.ok) return { ok: false, error: result.error }
+        const p = parseSentinel(result.stdout) || {}
+        const fp = (p.result || {}) as Record<string, unknown>
+        if (fp.__error) return { ok: false, error: String(fp.__error) }
+        return { ok: true, ...auditFingerprint(fp as unknown as Parameters<typeof auditFingerprint>[0]) }
+      })),
+    presentCall: present('ego_fingerprint_audit'),
+  } as unknown as DefineToolOpts))
+
+  reg(defineTool({
+    name: 'ego_storage_save',
+    description: "Save the current page origin's cookies + localStorage to a JSON file for later reuse (login / cf_clearance). Returns counts + path, never the secret values; the file is written mode 0600. Note: document.cookie cannot see httpOnly cookies, so those are not captured here. Writes to savePath.",
+    parameters: {
+      savePath: { type: 'string', required: true, description: 'Absolute path to write the storage-state JSON.' },
+      space: spaceParam,
+    },
+    output: okSchema,
+    timeoutMs: 20_000,
+    execute: async (args: Record<string, unknown>, exec: ToolExec) =>
+      withEgoLock(() => observeEgoTool(cfg, 'ego_storage_save', args, async () => {
+        markEgoToolCall(callingSessionId(exec))
+        const savePath = str(args.savePath, '')
+        if (!savePath) return { ok: false, error: 'savePath is required' }
+        const result = await runWithStaleSpaceRetry(ctx, cfg, { signal: exec?.signal } as ToolExec, () => stealthEvalScript(str(args.space, cfg.defaultSpace), collectStorageExpression()))
+        if (!result.ok) return { ok: false, error: result.error }
+        const p = parseSentinel(result.stdout) || {}
+        const raw = (p.result || {}) as { cookies?: unknown[]; origins?: unknown[]; __error?: string }
+        if (raw.__error) return { ok: false, error: raw.__error }
+        let state
+        try { state = parseStorageState(JSON.stringify({ version: 1, cookies: raw.cookies || [], origins: raw.origins || [] })) }
+        catch (e) { return { ok: false, error: `collected state invalid: ${e instanceof Error ? e.message : String(e)}` } }
+        mkdirSync(dirname(savePath), { recursive: true })
+        writeFileSync(savePath, serializeStorageState(state), { mode: 0o600 })
+        return { ok: true, path: savePath, cookies: state.cookies.length, origins: state.origins.length, note: 'httpOnly cookies are not visible to document.cookie and were not captured.' }
+      })),
+    presentCall: present('ego_storage_save'),
+  } as unknown as DefineToolOpts))
+
+  reg(defineTool({
+    name: 'ego_storage_load',
+    description: 'Load a storage-state JSON (from ego_storage_save) into the current page origin: restores localStorage and non-httpOnly cookies. Only writes the current origin; cross-origin entries are skipped. Returns applied counts. Use to reuse a login / cf_clearance.',
+    parameters: {
+      path: { type: 'string', required: true, description: 'Absolute path of the storage-state JSON to load.' },
+      space: spaceParam,
+    },
+    output: okSchema,
+    timeoutMs: 20_000,
+    execute: async (args: Record<string, unknown>, exec: ToolExec) =>
+      withEgoLock(() => observeEgoTool(cfg, 'ego_storage_load', args, async () => {
+        markEgoToolCall(callingSessionId(exec))
+        const path = str(args.path, '')
+        if (!path) return { ok: false, error: 'path is required' }
+        let state
+        try { state = parseStorageState(readFileSync(path, 'utf8')) }
+        catch (e) { return { ok: false, error: `cannot read/parse storage state: ${e instanceof Error ? e.message : String(e)}` } }
+        const result = await runWithStaleSpaceRetry(ctx, cfg, { signal: exec?.signal } as ToolExec, () => stealthEvalScript(str(args.space, cfg.defaultSpace), applyStorageExpression(state)))
+        if (!result.ok) return { ok: false, error: result.error }
+        const p = parseSentinel(result.stdout) || {}
+        const applied = (p.result || {}) as Record<string, unknown>
+        if (applied.__error) return { ok: false, error: String(applied.__error) }
+        return { ok: true, ...applied }
+      })),
+    presentCall: present('ego_storage_load'),
+  } as unknown as DefineToolOpts))
+
+  reg(defineTool({
+    name: 'ego_smart_fetch',
+    description: 'Browserless-first HTTP fetch with a Firefox TLS fingerprint (impit). Injects a cached cf_clearance for the host when present and captures a fresh one from the response. Returns { status, body, headers, escalate, reason }. When escalate=true the response looks anti-bot blocked: open the URL with ego_navigate and read it in the real browser, or ask the human to solve the challenge. Does not auto-escalate. Falls back gracefully when impit is unavailable.',
+    parameters: {
+      url: { type: 'string', required: true, description: 'Absolute URL to fetch.' },
+      method: { type: 'string', description: 'HTTP method, default GET.' },
+      headers: { type: 'object', additionalProperties: true, description: 'Request headers.' },
+      body: { type: 'string', description: 'Request body.' },
+      timeout: { type: 'number', description: 'Timeout in ms, default 30000.' },
+    },
+    output: okSchema,
+    timeoutMs: 60_000,
+    execute: async (args: Record<string, unknown>, exec: ToolExec) =>
+      observeEgoTool(cfg, 'ego_smart_fetch', args, async () => {
+        markEgoToolCall(callingSessionId(exec))
+        const headers = parseJsonArg(args.headers)
+        const r = await smartFetch({
+          url: str(args.url, ''),
+          method: str(args.method, 'GET'),
+          headers: headers && typeof headers === 'object' ? (headers as Record<string, string>) : {},
+          body: str(args.body, '') || undefined,
+          timeoutMs: num(args.timeout, 30000),
+        }, {
+          clearance: clearanceCache,
+          detectBlocked: (status, text, hdrs) => looksBlocked(text, hdrs, status ?? undefined),
+        })
+        return { ok: !r.response.error, status: r.response.status, body: r.response.text, headers: r.response.headers, url: r.response.url, escalate: r.escalate, reason: r.reason ?? null, error: r.response.error ?? null, redirects: r.response.redirects ?? [] }
+      }),
+    presentCall: present('ego_smart_fetch'),
+  } as unknown as DefineToolOpts))
+
+  // Humanized input is opt-in via the `humanize` config (default off).
+  if (cfg.humanize) {
+    reg(defineTool({
+      name: 'ego_human_click',
+      description: 'Click viewport coordinates (x, y) with a human-like mouse path and timing (curved approach, eased motion, press dwell). CDP input events are trusted, so this shapes geometry/timing only. Use for anti-bot-sensitive clicks instead of the instant ego_click coordinate click. One click, retry budget 0.',
+      parameters: {
+        x: { type: 'number', required: true, description: 'Viewport X coordinate.' },
+        y: { type: 'number', required: true, description: 'Viewport Y coordinate.' },
+        seed: { type: 'number', description: 'Optional RNG seed for a reproducible path.' },
+        space: spaceParam,
+      },
+      output: okSchema,
+      timeoutMs: 20_000,
+      execute: async (args: Record<string, unknown>, exec: ToolExec) =>
+        withEgoLock(() => observeEgoTool(cfg, 'ego_human_click', args, async () => {
+          markEgoToolCall(callingSessionId(exec))
+          const x = num(args.x, 0)
+          const y = num(args.y, 0)
+          const seed = num(args.seed, Math.floor(Math.random() * 1e9))
+          const result = await runWithStaleSpaceRetry(ctx, cfg, { signal: exec?.signal } as ToolExec, () => humanClickScript(str(args.space, cfg.defaultSpace), x, y, seed))
+          if (!result.ok) return { ok: false, error: result.error }
+          return parseSentinel(result.stdout) || { ok: true }
+        })),
+      presentCall: present('ego_human_click'),
+    } as unknown as DefineToolOpts))
+  }
 }
 
 

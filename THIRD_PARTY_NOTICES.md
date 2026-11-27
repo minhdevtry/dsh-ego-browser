@@ -68,3 +68,42 @@ MIT License (as provided by the upstream project):
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
+
+## Stealth kit adaptations (MIT)
+
+The `src/stealth/*` modules adapt concepts and heuristics from
+[mcp-camoufox](https://github.com/RobithYusuf/mcp-camoufox) (MIT License,
+Copyright (c) RobithYusuf). The implementations here are original; no
+mcp-camoufox source is copied verbatim. Adapted areas:
+
+| Stealth module | Adapted from (mcp-camoufox, MIT) |
+|---|---|
+| `antibot-detect.ts` | `detect_anti_bot` vendor heuristics (`src/tools/session.ts`, `src/tools/inspect.ts`) |
+| `http-impit.ts` | browserless impit kit + manual-redirect credential-drop fix (`src/tools/http.ts`) |
+| `storage-state.ts` | `storage_state_save/load` shape + cross-origin localStorage guard (`src/tools/session.ts`) |
+| `fingerprint-audit.ts` | `fingerprint_audit` coherence checks (`src/tools/inspect.ts`) |
+| `humanize.ts` | human-input / mouse record-replay concepts (`src/tools/session.ts`) |
+
+The clearance-cache pattern (`clearance.ts`) is inspired by fastCRW
+(https://github.com/adambenhassen/crw-camofox, AGPL-3.0) **as a concept only**;
+it is an original implementation and no AGPL code is copied or linked.
+
+    MIT License (mcp-camoufox)
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.

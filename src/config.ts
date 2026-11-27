@@ -32,6 +32,7 @@ const prefs = {
   rulesPrompt: z.boolean().description('Inject a compact browser operating-rules section into the system prompt after the first ego_* call (default true). Off keeps the prompt smaller; tool descriptions and failure hints still apply.'),
   trajectory: z.boolean().description('Write per-session JSONL tool-call trajectories under ~/.dsh/plugin-data/ego-browser/trajectories. Default off.'),
   recordText: z.boolean().description('Include raw ego_fill/ego_key text in trajectories. Default off; such text is recorded as <redacted>.'),
+  humanize: z.boolean().description('Stealth kit: shape mouse/keyboard input with human-like paths and timing (ego_human_click / ego_human_type). Default off; page-changing actions still fire once with retry budget 0.'),
   chromePath: z.string().description('Path to Chrome/Chromium. Empty = auto-detect.'),
   // macOS 27 + Chrome 156: Chrome's login-Keychain path silently fails to write
   // cookies to disk, so task-space logins vanish after a browser restart (#93).
@@ -327,5 +328,6 @@ export function resolveConfig(config: RawConfig = {}): ResolvedConfig {
     rulesPrompt: typeof config.rulesPrompt === 'boolean' ? config.rulesPrompt : !(config.rulesPrompt === 'false' || config.rulesPrompt === '0' || config.rulesPrompt === 0),
     trajectory: typeof config.trajectory === 'boolean' ? config.trajectory : config.trajectory === 'true' || config.trajectory === '1' || config.trajectory === 1,
     recordText: typeof config.recordText === 'boolean' ? config.recordText : config.recordText === 'true' || config.recordText === '1' || config.recordText === 1,
+    humanize: typeof config.humanize === 'boolean' ? config.humanize : config.humanize === 'true' || config.humanize === '1' || config.humanize === 1,
   }
 }

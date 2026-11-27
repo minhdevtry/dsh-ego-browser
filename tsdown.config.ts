@@ -33,6 +33,9 @@ const HOST_EXTERNALS = [
   'react',
   'react-dom',
   'react/jsx-runtime',
+  // Native HTTP client (Firefox TLS impersonation); lazy-loaded at runtime,
+  // never bundled. Optional: the stealth http module falls back when absent.
+  'impit',
 ]
 
 /** Browser-side peers the ModuleLoader resolves from profile node_modules. */

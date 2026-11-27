@@ -10,6 +10,7 @@ describe("dual capture config", () => {
       egoCliArgs: "", chromeArgs: "", isolateSpaces: false, sessionScopedSpaces: true, idleTimeoutMin: 0, disableFrameRelay: false,
       toolProfile: "full",
       language: "auto",
+      humanize: false,
       residentExecutor: false, residentIdleMin: 30, tuiAutoOpenPanel: false, rulesPrompt: true,
       viewportWidth: 0, viewportHeight: 0, deviceScaleFactor: 0,
       useMockKeychain: false, trajectory: false, recordText: false,
@@ -24,6 +25,7 @@ describe("dual capture config", () => {
       egoCliArgs: "", chromeArgs: "", isolateSpaces: false, sessionScopedSpaces: true, idleTimeoutMin: 0, disableFrameRelay: false,
       toolProfile: "full",
       language: "auto",
+      humanize: false,
       residentExecutor: false, residentIdleMin: 30, tuiAutoOpenPanel: false, rulesPrompt: true,
       viewportWidth: 0, viewportHeight: 0, deviceScaleFactor: 0,
       useMockKeychain: false, trajectory: false, recordText: false,
@@ -42,6 +44,13 @@ describe("dual capture config", () => {
     expect(resolveConfig({ language: "en" }).language).toBe("en");
     expect(resolveConfig({ language: "zh" }).language).toBe("zh");
     expect(resolveConfig({ language: "bogus" as any }).language).toBe("auto");
+  });
+
+  it("defaults humanize to off and accepts a boolean", () => {
+    expect(resolveConfig({}).humanize).toBe(false);
+    expect(resolveConfig({ humanize: true }).humanize).toBe(true);
+    expect(resolveConfig({ humanize: "true" as any }).humanize).toBe(true);
+    expect(resolveConfig({ humanize: "false" as any }).humanize).toBe(false);
   });
 
   it("parses useMockKeychain as an opt-in boolean (#93)", () => {

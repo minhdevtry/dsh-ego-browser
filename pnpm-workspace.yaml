@@ -1,7 +1,9 @@
 allowBuilds:
   esbuild: true
+  impit: true
 minimumReleaseAgeExclude:
   - '@deepseek-ai/cosmokit@1.8.4'
   - '@deepseek-ai/schemastery@3.18.3'
 onlyBuiltDependencies:
   - esbuild
+  - impit
