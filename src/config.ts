@@ -33,6 +33,12 @@ const prefs = {
   trajectory: z.boolean().description('Write per-session JSONL tool-call trajectories under ~/.dsh/plugin-data/ego-browser/trajectories. Default off.'),
   recordText: z.boolean().description('Include raw ego_fill/ego_key text in trajectories. Default off; such text is recorded as <redacted>.'),
   humanize: z.boolean().description('Stealth kit: shape mouse/keyboard input with human-like paths and timing (ego_human_click / ego_human_type). Default off; page-changing actions still fire once with retry budget 0.'),
+  camoufoxEnabled: z.boolean().description('Enable the optional Camoufox Firefox backend used by ego_camoufox. Default off; the existing ego_* tools keep using ego-lite Chrome.'),
+  camoufoxHeadless: z.boolean().description('Run Camoufox headless. Default true; use false only when a human needs to see or take over the Firefox window.'),
+  camoufoxHumanize: z.boolean().description('Enable Camoufox human-like cursor movement. Default false to save CPU; enable for anti-bot-sensitive browsing.'),
+  camoufoxGeoip: z.boolean().description('Match Camoufox timezone/locale/geolocation/WebRTC IP to the proxy exit IP. Default false; requires a proxy and downloads a GeoIP database on first use.'),
+  camoufoxProxy: z.string().description('Optional Camoufox proxy server URL, e.g. http://127.0.0.1:7890. Empty = direct connection. Credentials are never returned by status.'),
+  camoufoxIdleMin: z.number().min(0).max(1440).step(1).description('Close the owned Camoufox browser after N minutes without an ego_camoufox call. Default 10; 0 disables idle cleanup.'),
   chromePath: z.string().description('Path to Chrome/Chromium. Empty = auto-detect.'),
   // macOS 27 + Chrome 156: Chrome's login-Keychain path silently fails to write
   // cookies to disk, so task-space logins vanish after a browser restart (#93).
@@ -264,6 +270,14 @@ function normalizeVolatile(config: RawConfig): RawConfig {
   return plain as RawConfig
 }
 
+/** Settings may arrive as booleans or serialized strings from older hosts. */
+function booleanSetting(value: unknown, fallback: boolean): boolean {
+  if (typeof value === 'boolean') return value
+  if (value === 'true' || value === '1' || value === 1) return true
+  if (value === 'false' || value === '0' || value === 0) return false
+  return fallback
+}
+
 export function resolveConfig(config: RawConfig = {}): ResolvedConfig {
   config = normalizeVolatile(config)
   const legacyFps = finiteIn(config.castFpsCap, 0, 60)
@@ -328,6 +342,12 @@ export function resolveConfig(config: RawConfig = {}): ResolvedConfig {
     rulesPrompt: typeof config.rulesPrompt === 'boolean' ? config.rulesPrompt : !(config.rulesPrompt === 'false' || config.rulesPrompt === '0' || config.rulesPrompt === 0),
     trajectory: typeof config.trajectory === 'boolean' ? config.trajectory : config.trajectory === 'true' || config.trajectory === '1' || config.trajectory === 1,
     recordText: typeof config.recordText === 'boolean' ? config.recordText : config.recordText === 'true' || config.recordText === '1' || config.recordText === 1,
-    humanize: typeof config.humanize === 'boolean' ? config.humanize : config.humanize === 'true' || config.humanize === '1' || config.humanize === 1,
+    humanize: booleanSetting(config.humanize, false),
+    camoufoxEnabled: booleanSetting(config.camoufoxEnabled, false),
+    camoufoxHeadless: booleanSetting(config.camoufoxHeadless, true),
+    camoufoxHumanize: booleanSetting(config.camoufoxHumanize, false),
+    camoufoxGeoip: booleanSetting(config.camoufoxGeoip, false),
+    camoufoxProxy: typeof config.camoufoxProxy === 'string' ? config.camoufoxProxy.trim() : '',
+    camoufoxIdleMin: finiteIn(config.camoufoxIdleMin, 0, 1440) ? config.camoufoxIdleMin : 10,
   }
 }

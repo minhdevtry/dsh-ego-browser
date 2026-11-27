@@ -11,6 +11,12 @@ describe("dual capture config", () => {
       toolProfile: "full",
       language: "auto",
       humanize: false,
+      camoufoxEnabled: false,
+      camoufoxHeadless: true,
+      camoufoxHumanize: false,
+      camoufoxGeoip: false,
+      camoufoxProxy: "",
+      camoufoxIdleMin: 10,
       residentExecutor: false, residentIdleMin: 30, tuiAutoOpenPanel: false, rulesPrompt: true,
       viewportWidth: 0, viewportHeight: 0, deviceScaleFactor: 0,
       useMockKeychain: false, trajectory: false, recordText: false,
@@ -26,6 +32,12 @@ describe("dual capture config", () => {
       toolProfile: "full",
       language: "auto",
       humanize: false,
+      camoufoxEnabled: false,
+      camoufoxHeadless: true,
+      camoufoxHumanize: false,
+      camoufoxGeoip: false,
+      camoufoxProxy: "",
+      camoufoxIdleMin: 10,
       residentExecutor: false, residentIdleMin: 30, tuiAutoOpenPanel: false, rulesPrompt: true,
       viewportWidth: 0, viewportHeight: 0, deviceScaleFactor: 0,
       useMockKeychain: false, trajectory: false, recordText: false,
@@ -51,6 +63,23 @@ describe("dual capture config", () => {
     expect(resolveConfig({ humanize: true }).humanize).toBe(true);
     expect(resolveConfig({ humanize: "true" as any }).humanize).toBe(true);
     expect(resolveConfig({ humanize: "false" as any }).humanize).toBe(false);
+  });
+
+  it("keeps Camoufox opt-in, headless and idle-reaped by default", () => {
+    expect(resolveConfig({})).toMatchObject({
+      camoufoxEnabled: false,
+      camoufoxHeadless: true,
+      camoufoxHumanize: false,
+      camoufoxGeoip: false,
+      camoufoxProxy: "",
+      camoufoxIdleMin: 10,
+    });
+    expect(resolveConfig({ camoufoxEnabled: true, camoufoxHeadless: false, camoufoxProxy: " http://127.0.0.1:7890 ", camoufoxIdleMin: 0 })).toMatchObject({
+      camoufoxEnabled: true,
+      camoufoxHeadless: false,
+      camoufoxProxy: "http://127.0.0.1:7890",
+      camoufoxIdleMin: 0,
+    });
   });
 
   it("parses useMockKeychain as an opt-in boolean (#93)", () => {

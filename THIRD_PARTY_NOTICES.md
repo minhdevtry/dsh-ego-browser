@@ -107,3 +107,9 @@ it is an original implementation and no AGPL code is copied or linked.
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
+
+## Optional Camoufox backend
+
+`ego_camoufox` dynamically uses the official [Camoufox TypeScript launcher](https://github.com/daijro/camoufox/tree/main/typescript) (`camoufox`, MIT, Copyright (c) 2024-2026 daijro and the Camoufox contributors) and `playwright-core` (Apache-2.0). Both are optional dependencies; neither is bundled into `lib/index.js`.
+
+The Camoufox browser build is downloaded separately by `camoufox fetch` or on first launch. It is licensed under MPL-2.0 and is not redistributed in this repository or npm package. The launcher's bundled notices include its dependencies (including fpgen-js, Apache-2.0, and python-random); those notices remain with the installed package. The adapter in `src/camoufox/` is original code and does not copy fastCRW AGPL code.

@@ -36,6 +36,10 @@ const HOST_EXTERNALS = [
   // Native HTTP client (Firefox TLS impersonation); lazy-loaded at runtime,
   // never bundled. Optional: the stealth http module falls back when absent.
   'impit',
+  // Optional Camoufox backend. The launcher and Playwright are resolved from
+  // the profile at runtime and must never be copied into the host bundle.
+  'camoufox',
+  'playwright-core',
 ]
 
 /** Browser-side peers the ModuleLoader resolves from profile node_modules. */

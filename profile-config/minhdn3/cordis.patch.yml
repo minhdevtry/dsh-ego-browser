@@ -1,0 +1,19 @@
+# Optional profile overlay. Install after dsh-ego-browser; it only overrides
+# configuration and does not replace the plugin bundle.
+- id: ego-browser
+  name: dsh-ego-browser
+  config:
+    language: en
+    toolProfile: full
+    idleTimeoutMin: 10
+    cdpFps: 10
+    cdpMaxWidth: 1280
+    residentExecutor: true
+    residentIdleMin: 10
+    humanize: true
+    camoufoxEnabled: true
+    camoufoxHeadless: true
+    camoufoxHumanize: true
+    camoufoxGeoip: true
+    camoufoxProxy: ""
+    camoufoxIdleMin: 10

@@ -64,6 +64,8 @@ import { smartFetch } from './stealth/http-impit.ts'
 import { auditFingerprint, collectFingerprintExpression } from './stealth/fingerprint-audit.ts'
 import { parseStorageState, serializeStorageState, collectStorageExpression, applyStorageExpression } from './stealth/storage-state.ts'
 import { humanMousePath, humanTypingDelays, seededRng } from './stealth/humanize.ts'
+import { CamoufoxEngine } from './camoufox/engine.ts'
+import { registerCamoufoxTool } from './camoufox/tools.ts'
 import { installEgoBrowserSettings } from './settings.ts'
 import { registerEgoBrowserGateway } from './gateway.ts'
 import { ResidentProcess, ResidentNotRunningError, type ResidentFrame } from './resident.ts'
@@ -936,6 +938,12 @@ interface EgoRuntimeConfig {
   readonly recordText: boolean
   /** Stealth kit: human-like input paths/timing; default off. */
   readonly humanize: boolean
+  readonly camoufoxEnabled: boolean
+  readonly camoufoxHeadless: boolean
+  readonly camoufoxHumanize: boolean
+  readonly camoufoxGeoip: boolean
+  readonly camoufoxProxy: string
+  readonly camoufoxIdleMin: number
   /** Language for host-side tool results / hints / ego_help (English overlay). */
   readonly language: ResolvedConfig['language']
 }
@@ -2373,6 +2381,12 @@ export function apply(ctx: EgoContext, config: RawConfig = {}): void {
     get trajectory() { return resolveConfig(bridge.source() as RawConfig).trajectory },
     get recordText() { return resolveConfig(bridge.source() as RawConfig).recordText },
     get humanize() { return resolveConfig(bridge.source() as RawConfig).humanize },
+    get camoufoxEnabled() { return resolveConfig(bridge.source() as RawConfig).camoufoxEnabled },
+    get camoufoxHeadless() { return resolveConfig(bridge.source() as RawConfig).camoufoxHeadless },
+    get camoufoxHumanize() { return resolveConfig(bridge.source() as RawConfig).camoufoxHumanize },
+    get camoufoxGeoip() { return resolveConfig(bridge.source() as RawConfig).camoufoxGeoip },
+    get camoufoxProxy() { return resolveConfig(bridge.source() as RawConfig).camoufoxProxy },
+    get camoufoxIdleMin() { return resolveConfig(bridge.source() as RawConfig).camoufoxIdleMin },
     get language() { return resolveConfig(bridge.source() as RawConfig).language },
     // Live getter: the rules section reads it on every assembly pass, so toggling
     // the setting takes effect without re-registering the section.
@@ -2435,6 +2449,26 @@ export function apply(ctx: EgoContext, config: RawConfig = {}): void {
   registerReplayTool(ctx, cfg, reg)
   registerHelpAndDoctor(ctx, cfg, reg)
   registerStealthTools(ctx, cfg, reg)
+  // Optional second backend: one compact tool, no browser work until enabled
+  // and first used. Keeping it outside registerActionTools preserves upstream
+  // merge locality and leaves every existing ego_* tool on ego-lite Chrome.
+  const camoufoxEngine = new CamoufoxEngine(() => {
+    const c = resolveConfig(bridge.source() as RawConfig)
+    return {
+      headless: c.camoufoxHeadless,
+      humanize: c.camoufoxHumanize,
+      geoip: c.camoufoxGeoip,
+      proxy: c.camoufoxProxy || undefined,
+      idleTimeoutMs: c.camoufoxIdleMin * 60_000,
+    }
+  })
+  registerCamoufoxTool(
+    reg,
+    camoufoxEngine,
+    () => resolveConfig(bridge.source() as RawConfig).camoufoxEnabled,
+    (args, _exec, run) => observeEgoTool(cfg, 'ego_camoufox', args, run),
+  )
+  ctx.effect?.(() => { void camoufoxEngine.dispose() }, 'ego-browser: Camoufox backend')
   // Native operating rules (no skill): a system-prompt section that stays empty
   // until this process has seen an ego_* call. Feature-detected, so a host
   // without the systemPrompt service is unaffected; `rulesPrompt=false` keeps

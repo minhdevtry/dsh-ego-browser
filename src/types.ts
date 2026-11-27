@@ -165,6 +165,13 @@ export interface ResolvedConfig {
   recordText: boolean
   /** Stealth kit: human-like input paths/timing for ego_human_* tools; default off. */
   humanize: boolean
+  /** Optional Camoufox backend; existing ego_* tools remain on ego-lite Chrome. */
+  camoufoxEnabled: boolean
+  camoufoxHeadless: boolean
+  camoufoxHumanize: boolean
+  camoufoxGeoip: boolean
+  camoufoxProxy: string
+  camoufoxIdleMin: number
   chromePath: string
   /** macOS only: pass `--use-mock-keychain` to Chrome so cookies flush to disk (issue #93). */
   useMockKeychain: boolean

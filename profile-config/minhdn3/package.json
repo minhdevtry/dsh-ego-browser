@@ -1,0 +1,17 @@
+{
+  "name": "ego-browser-local-config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional local profile defaults for the customized ego-browser fork: English results, resource limits and the Camoufox backend.",
+  "icon": "./icon.svg",
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": ["@deepseek-ai/dsh-client-locale"],
+      "platform": "web"
+    }
+  }
+}
