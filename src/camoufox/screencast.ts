@@ -46,11 +46,12 @@ html,body{margin:0;height:100%;background:#101418;overflow:hidden}
 canvas{outline:none;background:#fff;max-width:100%;max-height:100%}
 </style></head><body><div id="wrap"><canvas id="cv" tabindex="0"></canvas></div>
 <script>
+window.addEventListener('error',e=>{window.__err=String(e.message)});
 const ws=new WebSocket('ws://'+location.hostname+':${wsPort}');ws.binaryType='arraybuffer';
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');let vw=1280,vh=800;
 ws.onopen=()=>{cv.focus();sendResize()};
 ws.onmessage=async ev=>{if(typeof ev.data==='string')return;const b=await createImageBitmap(new Blob([ev.data],{type:'image/jpeg'}));if(cv.width!==b.width||cv.height!==b.height){cv.width=b.width;cv.height=b.height;vw=b.width;vh=b.height}ctx.drawImage(b,0,0);b.close()};
-function send(o){if(ws.readyState===1)ws.send(JSON.stringify(o))}
+function send(o){window.__sent=(window.__sent||0)+1;if(ws.readyState===1)ws.send(JSON.stringify(o))}
 function co(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*(vw/r.width),y:(e.clientY-r.top)*(vh/r.height)}}
 cv.addEventListener('pointermove',e=>send({type:'mouse',action:'move',...co(e)}));
 cv.addEventListener('pointerdown',e=>{cv.focus();const c=co(e);send({type:'mouse',action:'move',...c});send({type:'mouse',action:'down'})});
@@ -112,6 +113,21 @@ export class CamoufoxScreencast {
       ws.on('close', () => this.clients.delete(ws))
     })
 
+    await this.startCast(width, height)
+
+    const server = createServer((_req, res) => { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(viewerHtml(wsPort)) })
+    this.server = server
+    await new Promise<void>(r => server.listen(httpPort, '127.0.0.1', r))
+
+    this.info = { running: true, display: '', httpPort, wsPort, viewerUrl: `http://127.0.0.1:${httpPort}/` }
+    return this.getInfo()
+  }
+
+  // (Re)start the screencast at an explicit size so frame dims always equal the
+  // page viewport (and thus the panel), keeping pointer mapping 1:1.
+  private async startCast(width: number, height: number): Promise<void> {
+    if (!this.page) return
+    if (this.cast) { try { await this.cast.dispose() } catch {} this.cast = null }
     this.cast = await this.page.screencast.start({
       size: { width, height }, quality: 80,
       onFrame: ({ data }: { data: Buffer }) => {
@@ -122,13 +138,16 @@ export class CamoufoxScreencast {
         }
       },
     }) as any
+  }
 
-    const server = createServer((_req, res) => { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(viewerHtml(wsPort)) })
-    this.server = server
-    await new Promise<void>(r => server.listen(httpPort, '127.0.0.1', r))
-
-    this.info = { running: true, display: '', httpPort, wsPort, viewerUrl: `http://127.0.0.1:${httpPort}/` }
-    return this.getInfo()
+  private resizeCast(w: number, h: number): void {
+    const width = Math.max(320, w | 0), height = Math.max(240, h | 0)
+    void (async () => {
+      try {
+        await this.page?.setViewportSize({ width, height })
+        await this.startCast(width, height)
+      } catch {}
+    })()
   }
 
   private async handleInput(ws: any, raw: Buffer): Promise<void> {
@@ -149,14 +168,14 @@ export class CamoufoxScreencast {
         if (m.action === 'type') await page.keyboard.insertText(m.text || '')
         else if (m.action === 'press') await page.keyboard.press(m.key)
       } else if (m.type === 'resize') {
-        await page.setViewportSize({ width: Math.max(320, m.width | 0), height: Math.max(240, m.height | 0) })
+        this.resizeCast(m.width, m.height)
       } else if (m.type === 'navigate') {
         await page.goto(m.url, { waitUntil: 'domcontentloaded', timeout: 30000 })
       }
     } catch (e) { try { ws.send(JSON.stringify({ error: String((e as Error).message || e) })) } catch {} }
   }
 
-  resize(w: number, h: number): void { void this.page?.setViewportSize({ width: Math.max(320, w | 0), height: Math.max(240, h | 0) }).catch(() => {}) }
+  resize(w: number, h: number): void { this.resizeCast(w, h) }
 
   async getClipboard(): Promise<string> {
     try { return await this.page?.evaluate(() => navigator.clipboard.readText()) ?? '' } catch { return '' }
